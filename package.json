@@ -1,5 +1,5 @@
 {
-  "name": "preflux",
+  "name": "preflux-monorepo",
   "version": "0.1.0",
   "private": true,
   "description": "Preflux - a pre-push code security and risk analysis system",
@@ -10,7 +10,10 @@
   "scripts": {
     "dev:web": "npm run dev -w web",
     "build:web": "npm run build -w web",
-    "lint:web": "npm run lint -w web"
+    "lint:web": "npm run lint -w web",
+    "build:cli": "npm run build -w preflux",
+    "test:cli": "npm test -w preflux",
+    "typecheck:cli": "npm run typecheck -w preflux"
   },
   "engines": {
     "node": ">=20"

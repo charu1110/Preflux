@@ -1,0 +1,34 @@
+{
+  "name": "preflux",
+  "version": "0.1.0",
+  "description": "Pre-push code security and risk analysis: blocks leaked secrets before they leave your machine",
+  "type": "module",
+  "bin": {
+    "preflux": "./dist/index.js"
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsup",
+    "dev": "tsup --watch",
+    "typecheck": "tsc --noEmit",
+    "test": "tsup && vitest run",
+    "test:watch": "vitest"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "license": "MIT",
+  "devDependencies": {
+    "@types/node": "^20.19.43",
+    "tsup": "^8.5.1",
+    "typescript": "^5.9.3",
+    "vitest": "^3.2.7"
+  },
+  "dependencies": {
+    "@preflux/shared": "^0.1.0",
+    "chalk": "^6.0.1",
+    "commander": "^15.0.0"
+  }
+}
