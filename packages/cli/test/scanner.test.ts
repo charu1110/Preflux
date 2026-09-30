@@ -5,7 +5,8 @@ import { describe, expect, it } from "vitest";
 import { DEFAULT_CONFIG } from "../src/config.js";
 import type { AddedLine } from "../src/git/diff.js";
 import { loadAllowlist, type Allowlist } from "../src/secrets/allowlist.js";
-import { scanAddedLines, scanLine } from "../src/secrets/scanner.js";
+import { scanLine } from "@preflux/shared/secrets";
+import { scanAddedLines } from "../src/secrets/scanner.js";
 import { makeFaker } from "./helpers/fake.js";
 
 const entropy = DEFAULT_CONFIG.secrets.entropy;
@@ -83,6 +84,7 @@ describe("false positives", () => {
     `password = "your-password-here"`,
     `aws_access_key_id = AKIAIOSFODNN7EXAMPLE`,
     `export const DEFAULT_TIMEOUT_MS = 30_000;`,
+    `const ALPHABET = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789";`,
   ];
 
   it.each(benign)("ignores: %s", (line) => {

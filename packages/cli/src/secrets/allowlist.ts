@@ -17,8 +17,6 @@ export const DEFAULT_IGNORED_PATHS = [
   "*.svg",
 ];
 
-export const INLINE_ALLOW = "preflux:allow";
-
 export interface Allowlist {
   isPathIgnored(file: string): boolean;
   isFingerprintAllowed(fp: string): boolean;

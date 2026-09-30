@@ -1,4 +1,4 @@
-import type { Severity } from "@preflux/shared";
+import type { Severity } from "../index";
 
 export interface SecretPattern {
   id: string;

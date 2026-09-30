@@ -1,12 +1,11 @@
 import { mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { candidateTokens, maskLine, maskSecret, shannonEntropy } from "@preflux/shared/secrets";
 import { describe, expect, it } from "vitest";
 import { parseUnifiedDiff } from "../src/git/diff.js";
 import { parsePrePushInput } from "../src/git/prePushInput.js";
 import { globToRegExp, loadAllowlist } from "../src/secrets/allowlist.js";
-import { candidateTokens, shannonEntropy } from "../src/secrets/entropy.js";
-import { maskLine, maskSecret } from "../src/secrets/mask.js";
 
 describe("shannonEntropy", () => {
   it("matches known values", () => {

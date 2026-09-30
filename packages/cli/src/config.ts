@@ -1,16 +1,7 @@
 import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { DEFAULT_SCORE_CONFIG, type ScoreConfig } from "@preflux/shared";
-
-export interface EntropyConfig {
-  /** Bits/char above which an unexplained base64 token is flagged. */
-  base64Threshold: number;
-  /** Bits/char above which a hex token next to a secret-ish keyword is flagged. */
-  hexThreshold: number;
-  /** Bits/char for values assigned to keywords like `password` / `apiKey`. */
-  keywordThreshold: number;
-  minLength: number;
-}
+import { DEFAULT_ENTROPY_CONFIG, type EntropyConfig } from "@preflux/shared/secrets";
 
 export interface PrefluxConfig {
   secrets: {
@@ -25,7 +16,7 @@ export const CONFIG_FILE = ".prefluxrc.json";
 
 export const DEFAULT_CONFIG: PrefluxConfig = {
   secrets: {
-    entropy: { base64Threshold: 4.5, hexThreshold: 3.0, keywordThreshold: 3.0, minLength: 20 },
+    entropy: DEFAULT_ENTROPY_CONFIG,
     ignorePaths: [],
   },
   score: DEFAULT_SCORE_CONFIG,
