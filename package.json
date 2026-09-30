@@ -1,0 +1,18 @@
+{
+  "name": "preflux",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Preflux - a pre-push code security and risk analysis system",
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "scripts": {
+    "dev:web": "npm run dev -w web",
+    "build:web": "npm run build -w web",
+    "lint:web": "npm run lint -w web"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}
