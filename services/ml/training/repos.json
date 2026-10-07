@@ -1,0 +1,8 @@
+[
+  { "name": "requests", "url": "https://github.com/psf/requests.git", "language": "python", "branch": "main" },
+  { "name": "flask", "url": "https://github.com/pallets/flask.git", "language": "python", "branch": "main" },
+  { "name": "httpie", "url": "https://github.com/httpie/cli.git", "language": "python", "branch": "master" },
+  { "name": "axios", "url": "https://github.com/axios/axios.git", "language": "javascript", "branch": "v1.x" },
+  { "name": "express", "url": "https://github.com/expressjs/express.git", "language": "javascript", "branch": "master" },
+  { "name": "koa", "url": "https://github.com/koajs/koa.git", "language": "javascript", "branch": "master" }
+]

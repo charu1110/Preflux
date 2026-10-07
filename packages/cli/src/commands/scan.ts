@@ -5,6 +5,7 @@ import { addedLinesForRevisions, addedLinesStaged, type AddedLine } from "../git
 import { repoRoot } from "../git/exec.js";
 import { parsePrePushInput, readStdin } from "../git/prePushInput.js";
 import { countCommits, revisionsForPushedRef, unpushedRevisions, type RevisionSet } from "../git/range.js";
+import { runBugRisk } from "../features/bugRisk.js";
 import { renderReport } from "../report/terminal.js";
 import { loadAllowlist } from "../secrets/allowlist.js";
 import { scanAddedLines } from "../secrets/scanner.js";
@@ -43,16 +44,24 @@ export async function runScan(opts: ScanOptions): Promise<ScanReport> {
   const t0 = performance.now();
   let added: AddedLine[];
   let ranges: ScanRange[];
+  let sets: RevisionSet[] = [];
   if (opts.staged) {
     added = addedLinesStaged(root);
     ranges = [{ label: "staged", commits: 0 }];
   } else {
-    const sets = await resolveRevisions(opts, root);
+    sets = await resolveRevisions(opts, root);
     added = sets.flatMap((s) => addedLinesForRevisions(s.revArgs, root));
     ranges = sets.map((s) => ({ label: s.label, commits: countCommits(s.revArgs, root) }));
   }
-  const findings = scanAddedLines(added, allowlist, config.secrets.entropy);
+  // 1. Secrets: fully local, before any network call.
+  const secretFindings = scanAddedLines(added, allowlist, config.secrets.entropy);
   const secretsMs = Math.round(performance.now() - t0);
+
+  // 2. Bug risk: numeric features only leave the machine. Informational until Phase 4.
+  const bugRisk = opts.staged
+    ? { findings: [], module: { status: "skipped" as const, reason: "needs commits (not available with --staged)", durationMs: 0 } }
+    : await runBugRisk(sets, root, config.ml);
+  const findings = [...secretFindings, ...bugRisk.findings];
 
   return {
     version: 1,
@@ -64,11 +73,11 @@ export async function runScan(opts: ScanOptions): Promise<ScanReport> {
     findings,
     score: null,
     // Hard override: any secret blocks the push, whatever the other modules say.
-    decision: findings.some((f) => f.kind === "secret") ? "block" : "allow",
+    decision: secretFindings.length > 0 ? "block" : "allow",
     forced: false,
     modules: {
       secrets: { status: "ok", durationMs: secretsMs },
-      bugRisk: NOT_YET("Phase 2"),
+      bugRisk: bugRisk.module,
       conflicts: NOT_YET("Phase 3"),
     },
   };

@@ -5,5 +5,6 @@ export default defineConfig({
     include: ["test/**/*.test.ts"],
     // e2e tests create real git repos and run pushes.
     testTimeout: 60_000,
+    hookTimeout: 60_000,
   },
 });

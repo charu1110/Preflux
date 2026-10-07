@@ -1,9 +1,10 @@
-import { spawnSync } from "node:child_process";
+import { spawn, spawnSync } from "node:child_process";
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { delimiter, join, resolve } from "node:path";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { makeFaker } from "./helpers/fake.js";
+import { deadUrl, startMlStub } from "./helpers/mlStub.js";
 
 // Real repositories, a real bare remote and real `git push` runs through the installed hook.
 // Requires `npm run build` first (the `test` script does it).
@@ -19,6 +20,16 @@ function run(cmd: string, args: string[], cwd = work, input?: string) {
   const r = spawnSync(cmd, args, { cwd, env, encoding: "utf8", input });
   return { code: r.status ?? -1, out: `${r.stdout}${r.stderr}` };
 }
+/** Async variant: keeps the event loop free so an in-process ML stub can answer the hook. */
+function runAsync(cmd: string, args: string[], extraEnv: NodeJS.ProcessEnv = {}): Promise<{ code: number; out: string }> {
+  return new Promise((done) => {
+    const child = spawn(cmd, args, { cwd: work, env: { ...env, ...extraEnv } });
+    let out = "";
+    child.stdout.on("data", (d) => (out += d));
+    child.stderr.on("data", (d) => (out += d));
+    child.on("close", (code) => done({ code: code ?? -1, out }));
+  });
+}
 const gitOk = (...args: string[]) => {
   const r = run("git", args);
   if (r.code !== 0) throw new Error(`git ${args.join(" ")} failed:\n${r.out}`);
@@ -31,7 +42,7 @@ const commitFile = (file: string, content: string, msg: string) => {
 };
 const remoteHead = (branch = "main") => run("git", ["ls-remote", "origin", `refs/heads/${branch}`]).out.split(/\s/)[0] ?? "";
 
-beforeAll(() => {
+beforeAll(async () => {
   if (!existsSync(CLI)) throw new Error("dist/index.js missing: run `npm run build` first");
   base = mkdtempSync(join(tmpdir(), "preflux-e2e-"));
 
@@ -39,7 +50,14 @@ beforeAll(() => {
   const bin = join(base, "bin");
   mkdirSync(bin);
   writeFileSync(join(bin, "preflux"), `#!/bin/sh\nexec node "${CLI.replace(/\\/g, "/")}" "$@"\n`, { mode: 0o755 });
-  env = { ...process.env, PATH: `${bin}${delimiter}${process.env.PATH}`, NO_COLOR: "1", GIT_TERMINAL_PROMPT: "0" };
+  // Point at a dead ML URL by default, so a locally running service can't affect these tests.
+  env = {
+    ...process.env,
+    PATH: `${bin}${delimiter}${process.env.PATH}`,
+    NO_COLOR: "1",
+    GIT_TERMINAL_PROMPT: "0",
+    PREFLUX_ML_URL: await deadUrl(),
+  };
 
   run("git", ["init", "-q", "--bare", "-b", "main", join(base, "remote.git")], base);
   run("git", ["clone", "-q", join(base, "remote.git"), "work"], base);
@@ -148,8 +166,15 @@ describe("pre-push hook", () => {
     const r = spawnSync("git", ["push", "origin", "main"], {
       cwd: work,
       encoding: "utf8",
-      // Plain PATH without the shim.
-      env: { ...process.env, NO_COLOR: "1" },
+      // PATH without the shim, and without a globally installed/linked preflux (e.g. after `npm link`).
+      env: {
+        ...process.env,
+        NO_COLOR: "1",
+        PATH: (process.env.PATH ?? "")
+          .split(delimiter)
+          .filter((dir) => !["preflux", "preflux.cmd"].some((f) => existsSync(join(dir, f))))
+          .join(delimiter),
+      },
     });
     expect(r.status).not.toBe(0);
     expect(`${r.stdout}${r.stderr}`).toContain("preflux: command not found");
@@ -164,5 +189,72 @@ describe("preflux scan --staged", () => {
     expect(r.code).toBe(1);
     expect(r.out).toContain("github-token");
     gitOk("reset", "-q", "settings.py");
+  });
+});
+
+describe("bug-risk prediction", () => {
+  const lines = (n: number, tag: string) =>
+    Array.from({ length: n }, (_, i) => `export const ${tag}${i} = ${i};\n`).join("");
+
+  it("shows per-file risk from the ML service and sends no paths or code", async () => {
+    const stub = await startMlStub();
+    try {
+      gitOk("checkout", "-q", "main");
+      writeFileSync(join(work, "big.ts"), lines(90, "big"));
+      writeFileSync(join(work, "small.js"), lines(5, "small"));
+      gitOk("add", "big.ts", "small.js");
+      gitOk("commit", "-q", "-m", "add modules");
+
+      const push = await runAsync("git", ["push", "origin", "main"], { PREFLUX_ML_URL: stub.url });
+      expect(push.code, push.out).toBe(0);
+      expect(push.out).toMatch(/bug risk\s+2 files analysed/);
+      expect(push.out).toMatch(/90% HIGH\s+big\.ts/);
+      expect(push.out).toMatch(/5% LOW\s+small\.js/);
+      expect(push.out).toContain("1 high bug-risk file");
+
+      expect(stub.requests).toHaveLength(1);
+      const sent = stub.requests[0]!;
+      expect(sent).not.toMatch(/big\.ts|small\.js|export const/);
+    } finally {
+      await stub.close();
+    }
+  });
+
+  it("skips bug risk, but still pushes, when the ML service is down", async () => {
+    commitFile("later.py", "x = 1\n", "small python change");
+    const push = await runAsync("git", ["push", "origin", "main"]);
+    expect(push.code, push.out).toBe(0);
+    expect(push.out).toMatch(/bug risk\s+skipped \(ML service not reachable/);
+    expect(push.out).toContain("PUSH ALLOWED");
+  });
+
+  it("still blocks secrets when bug risk is available", async () => {
+    const stub = await startMlStub();
+    try {
+      commitFile("keys.js", `module.exports = "${fake.githubToken()}";\n`, "add keys");
+      const push = await runAsync("git", ["push", "origin", "main"], { PREFLUX_ML_URL: stub.url });
+      expect(push.code).not.toBe(0);
+      expect(push.out).toContain("PUSH BLOCKED");
+      expect(push.out).toMatch(/bug risk\s+1 file analysed/);
+      gitOk("reset", "-q", "--hard", "origin/main");
+    } finally {
+      await stub.close();
+    }
+  });
+
+  it("includes bug-risk findings in --json output", async () => {
+    const stub = await startMlStub();
+    try {
+      commitFile("report.ts", lines(40, "r"), "add report");
+      const r = await runAsync("node", [CLI, "scan", "--json"], { PREFLUX_ML_URL: stub.url });
+      const report = JSON.parse(r.out.slice(r.out.indexOf("{")));
+      expect(report.modules.bugRisk.status).toBe("ok");
+      expect(report.findings).toContainEqual(
+        expect.objectContaining({ kind: "bug_risk", file: "report.ts", severity: "medium", probability: 0.4 }),
+      );
+      expect(report.decision).toBe("allow");
+    } finally {
+      await stub.close();
+    }
   });
 });

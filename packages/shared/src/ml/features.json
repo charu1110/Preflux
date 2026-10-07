@@ -1,0 +1,8 @@
+{
+  "version": 1,
+  "featureOrder": ["la", "ld", "nf", "entropy", "nuc", "ndev", "age_days", "prior_fixes", "exp", "is_fix", "loc"],
+  "fixRegex": "\\b(fix(e[sd]|ing)?|bug(s|fix)?|defect|hotfix|patch(ed)?|resolve[sd]?|regression|crash(es)?)\\b",
+  "extensions": [".js", ".jsx", ".ts", ".tsx", ".mjs", ".cjs", ".py"],
+  "maxFilesPerCommit": 50,
+  "maxRowsPerPush": 200
+}

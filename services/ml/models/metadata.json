@@ -1,0 +1,72 @@
+{
+  "model_version": "bugrisk-v1-20261004",
+  "feature_spec_version": 1,
+  "feature_order": [
+    "la",
+    "ld",
+    "nf",
+    "entropy",
+    "nuc",
+    "ndev",
+    "age_days",
+    "prior_fixes",
+    "exp",
+    "is_fix",
+    "loc"
+  ],
+  "calibration": {
+    "method": "platt",
+    "a": 3.655465546870493,
+    "b": -1.781711397209188
+  },
+  "threshold": 0.19429470598697662,
+  "levels": {
+    "medium": 0.161224,
+    "high": 0.194295
+  },
+  "trained_at": "2026-10-04T16:35:15+00:00",
+  "best_iteration": 9,
+  "params": {
+    "n_estimators": 500,
+    "max_depth": 5,
+    "learning_rate": 0.05,
+    "subsample": 0.8,
+    "colsample_bytree": 0.8,
+    "min_child_weight": 5,
+    "tree_method": "hist",
+    "random_state": 42
+  },
+  "data": {
+    "repos": [
+      "axios",
+      "express",
+      "flask",
+      "httpie",
+      "koa",
+      "requests"
+    ],
+    "rows": {
+      "train": 14700,
+      "val": 2099,
+      "test": 4205
+    },
+    "positive_rate": 0.14587697581413064
+  },
+  "test_metrics": {
+    "precision": 0.21257750221434898,
+    "recall": 0.5783132530120482,
+    "f1": 0.31088082901554404,
+    "roc_auc": 0.753849381695648,
+    "pr_auc": 0.24828849672914768,
+    "positive_rate": 0.09869203329369798,
+    "mean_predicted": 0.14398886263370514,
+    "brier": 0.08482003450658475,
+    "confusion": {
+      "tn": 2901,
+      "fp": 889,
+      "fn": 175,
+      "tp": 240
+    },
+    "n": 4205
+  }
+}

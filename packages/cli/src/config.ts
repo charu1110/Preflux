@@ -10,6 +10,16 @@ export interface PrefluxConfig {
     ignorePaths: string[];
   };
   score: ScoreConfig;
+  ml: MlConfig;
+}
+
+export interface MlConfig {
+  /** Set false to skip bug-risk prediction entirely. */
+  enabled: boolean;
+  /** Preflux ML service base URL. The PREFLUX_ML_URL environment variable overrides it. */
+  url: string;
+  /** Give up (and skip bug risk) after this long; a push is never held up by the ML service. */
+  timeoutMs: number;
 }
 
 export const CONFIG_FILE = ".prefluxrc.json";
@@ -20,11 +30,18 @@ export const DEFAULT_CONFIG: PrefluxConfig = {
     ignorePaths: [],
   },
   score: DEFAULT_SCORE_CONFIG,
+  ml: { enabled: true, url: "http://127.0.0.1:8000", timeoutMs: 5000 },
 };
 
 type DeepPartial<T> = { [K in keyof T]?: T[K] extends object ? DeepPartial<T[K]> : T[K] };
 
 export function loadConfig(root: string): PrefluxConfig {
+  const config = readConfigFile(root);
+  const envUrl = process.env.PREFLUX_ML_URL;
+  return envUrl ? { ...config, ml: { ...config.ml, url: envUrl } } : config;
+}
+
+function readConfigFile(root: string): PrefluxConfig {
   const file = join(root, CONFIG_FILE);
   if (!existsSync(file)) return DEFAULT_CONFIG;
   let user: DeepPartial<PrefluxConfig>;
@@ -42,5 +59,6 @@ export function loadConfig(root: string): PrefluxConfig {
       weights: { ...DEFAULT_CONFIG.score.weights, ...user.score?.weights },
       thresholds: { ...DEFAULT_CONFIG.score.thresholds, ...user.score?.thresholds },
     },
+    ml: { ...DEFAULT_CONFIG.ml, ...user.ml },
   };
 }

@@ -25,6 +25,8 @@ export interface Finding {
   maskedSnippet?: string;
   /** Stable hash identifying this finding; can be used to allowlist it. */
   fingerprint?: string;
+  /** Bug-risk findings: model probability (0-1) that this change introduces a defect. */
+  probability?: number;
   /** Plain-English explanation (filled by the explanation layer in Phase 4). */
   explanation?: string;
 }

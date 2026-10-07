@@ -26,6 +26,20 @@ function formatFinding(f: Finding): string {
   return lines.join("\n");
 }
 
+const TOP_RISKS = 5;
+const RISK_COLOR: Partial<Record<Severity, (s: string) => string>> = {
+  high: chalk.red.bold,
+  medium: chalk.yellow.bold,
+  low: chalk.green,
+};
+
+function formatRisk(f: Finding): string {
+  const pct = `${Math.round((f.probability ?? 0) * 100)}%`.padStart(4);
+  const level = (f.severity === "high" ? "HIGH" : f.severity === "medium" ? "MED " : "LOW ").padEnd(4);
+  const color = RISK_COLOR[f.severity] ?? chalk.gray;
+  return `     ${color(`${pct} ${level}`)}  ${chalk.cyan(f.file)}`;
+}
+
 export function renderReport(report: ScanReport): string {
   const out: string[] = [];
   const commits = report.ranges.reduce((n, r) => n + r.commits, 0);
@@ -48,6 +62,12 @@ export function renderReport(report: ScanReport): string {
           : chalk.red.bold(`  ✖  ${label} ${secrets.length} found`),
       );
       for (const f of secrets) out.push(formatFinding(f));
+    } else if (name === "bugRisk") {
+      const risks = report.findings.filter((f) => f.kind === "bug_risk");
+      const note = m.reason ? chalk.gray(` (${m.reason})`) : "";
+      out.push(`  ${chalk.cyan("◆")}  ${label} ${risks.length} file${risks.length === 1 ? "" : "s"} analysed${note}`);
+      for (const f of risks.slice(0, TOP_RISKS)) out.push(formatRisk(f));
+      if (risks.length > TOP_RISKS) out.push(chalk.gray(`       … ${risks.length - TOP_RISKS} more (see --json)`));
     }
   }
   out.push("");
@@ -70,6 +90,13 @@ export function renderReport(report: ScanReport): string {
     );
   } else {
     out.push(chalk.bgGreen.black.bold(" PUSH ALLOWED ") + chalk.green(" no secrets found."), "");
+    const high = report.findings.filter((f) => f.kind === "bug_risk" && f.severity === "high").length;
+    if (high > 0) {
+      out.push(
+        chalk.yellow(`  ⚠ ${high} high bug-risk file${high === 1 ? "" : "s"}: worth an extra review or a test before merging.`),
+        "",
+      );
+    }
   }
   return out.join("\n");
 }

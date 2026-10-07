@@ -57,7 +57,24 @@ npm run build:cli           # packages/cli/dist/index.js
 npm run test:cli            # vitest: unit + e2e (real git pushes to a temp bare remote)
 npm run typecheck:cli
 ```
-The ML commands will be added in Phase 2.
+ML service (run from `services/ml`, see `services/ml/README.md`):
+```bash
+.venv/Scripts/python -m pytest                              # feature parity, SZZ, training smoke, API
+.venv/Scripts/python -m uvicorn app.main:app --port 8000    # CLI calls this (PREFLUX_ML_URL overrides)
+.venv/Scripts/python training/mine.py | build_dataset.py | train.py | evaluate.py
+```
+
+## Bug-risk rules
+- **Feature definitions live in `packages/shared/src/ml/features.json` + `docs/features.md`.** Any change must be made in *both* `packages/cli/src/features/extract.ts` and `services/ml/training/features.py`. Then regenerate `fixtures/feature-repo.expected.json` (see `services/ml/README.md`) and retrain.
+- The CLI sends `/predict` only numbers and opaque ids (`r0`, `r1`…). Never send file paths, code or commit messages.
+- Bug risk is informational until the Phase 4 score. It must never block a push, and any ML failure means "skipped".
+- Keep CLI git calls constant per push (batched `git log` / `cat-file --batch`). Spawning git per file is far too slow on Windows.
+
+## Windows TLS note
+This machine intercepts HTTPS (antivirus/proxy root CA). Don't disable verification. Use the Windows certificate store instead:
+- **pip:** install through the global pip 25+ with `pip --python <venv python>`
+- **git clone:** `git -c http.sslBackend=schannel clone …`
+- **Node:** v24+ with `--use-system-ca`
 
 ## Test rules
 - **Never write a complete fake secret literal in source.** Generate secrets at runtime with `packages/cli/test/helpers/fake.ts` (a seeded PRNG plus split prefixes). Otherwise GitHub push protection, and Preflux itself, will flag this repo.
@@ -66,7 +83,8 @@ The ML commands will be added in Phase 2.
 
 ## Environment
 - `apps/web/.env.local`: `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY`, `SUPABASE_SERVICE_ROLE_KEY`
-- `services/ml`: `PREFLUX_LLM_PROVIDER` (default `mock`)
+- `services/ml`: `PREFLUX_MODEL_DIR` (default `models/`), `PREFLUX_FEATURE_SPEC`, `PREFLUX_LLM_PROVIDER` (Phase 4, default `mock`)
+- CLI: `PREFLUX_ML_URL` (default `http://127.0.0.1:8000`)
 
 ## Conventions
 - Windows dev machines, so keep scripts cross-platform (no bash-only npm scripts) and avoid native node-gyp modules. That is why the CLI uses web-tree-sitter.
@@ -77,7 +95,7 @@ The ML commands will be added in Phase 2.
 ## Phase checklist
 - [x] Phase 0: monorepo, CLAUDE.md, Next.js scaffold, Supabase helper
 - [x] Phase 1: Secret detection + CLI (`init`, `scan`) + husky pre-push hook. See `packages/cli/README.md`
-- [ ] Phase 2: Bug-risk ML (dataset mining, SZZ, XGBoost, FastAPI /predict, CLI feature extraction + parity test)
+- [x] Phase 2: Bug-risk ML (dataset mining, SZZ, XGBoost, FastAPI /predict, CLI feature extraction + parity test). Results: `docs/ml-evaluation.md`
 - [ ] Phase 3: Tree-sitter structural conflict detection
 - [ ] Phase 4: Scoring, redaction, LLM explanation layer (mock provider), terminal report
 - [ ] Phase 5: Supabase schema + RLS, auth, dashboard pages, /api/ingest, `preflux link`

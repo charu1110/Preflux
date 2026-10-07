@@ -18,6 +18,22 @@ export function git(args: string[], cwd: string): string {
   }
 }
 
+/** Run git with stdin input and return raw stdout bytes (for `cat-file --batch`). */
+export function gitBuffer(args: string[], cwd: string, input: string): Buffer {
+  try {
+    return execFileSync("git", ["-c", "core.quotepath=off", ...args], {
+      cwd,
+      input,
+      maxBuffer: 512 * 1024 * 1024,
+      stdio: ["pipe", "pipe", "pipe"],
+    });
+  } catch (err) {
+    const e = err as { stderr?: Buffer | string; message: string };
+    const stderr = e.stderr ? e.stderr.toString().trim() : e.message;
+    throw new GitError(`git ${args.join(" ")} failed: ${stderr}`);
+  }
+}
+
 /** Like git(), but returns null instead of throwing. */
 export function tryGit(args: string[], cwd: string): string | null {
   try {
