@@ -40,6 +40,13 @@ function formatRisk(f: Finding): string {
   return `     ${color(`${pct} ${level}`)}  ${chalk.cyan(f.file)}`;
 }
 
+function formatConflict(f: Finding): string {
+  const where = `${f.file}${f.line ? `:${f.line}` : ""}`;
+  const color = RISK_COLOR[f.severity] ?? chalk.gray;
+  const level = (f.severity === "high" ? "HIGH" : f.severity === "medium" ? "MED " : "LOW ").padEnd(4);
+  return [`     ${color(level)}  ${chalk.cyan(where)}  ${chalk.gray(f.ruleId.replace(/^conflict-/, ""))}`, `           ${f.message}`].join("\n");
+}
+
 export function renderReport(report: ScanReport): string {
   const out: string[] = [];
   const commits = report.ranges.reduce((n, r) => n + r.commits, 0);
@@ -68,6 +75,15 @@ export function renderReport(report: ScanReport): string {
       out.push(`  ${chalk.cyan("◆")}  ${label} ${risks.length} file${risks.length === 1 ? "" : "s"} analysed${note}`);
       for (const f of risks.slice(0, TOP_RISKS)) out.push(formatRisk(f));
       if (risks.length > TOP_RISKS) out.push(chalk.gray(`       … ${risks.length - TOP_RISKS} more (see --json)`));
+    } else if (name === "conflicts") {
+      const conflicts = report.findings.filter((f) => f.kind === "conflict");
+      const note = m.reason ? chalk.gray(` (${m.reason})`) : "";
+      if (conflicts.length === 0) {
+        out.push(chalk.green(`  ✔  ${label} none found`) + note);
+      } else {
+        out.push(chalk.yellow.bold(`  ⚠  ${label} ${conflicts.length} possible conflict${conflicts.length === 1 ? "" : "s"}`) + note);
+        for (const f of conflicts) out.push(formatConflict(f));
+      }
     }
   }
   out.push("");
@@ -94,6 +110,13 @@ export function renderReport(report: ScanReport): string {
     if (high > 0) {
       out.push(
         chalk.yellow(`  ⚠ ${high} high bug-risk file${high === 1 ? "" : "s"}: worth an extra review or a test before merging.`),
+        "",
+      );
+    }
+    const conflicts = report.findings.filter((f) => f.kind === "conflict").length;
+    if (conflicts > 0) {
+      out.push(
+        chalk.yellow(`  ⚠ ${conflicts} possible merge conflict${conflicts === 1 ? "" : "s"} with the base branch: coordinate with your teammates before merging.`),
         "",
       );
     }

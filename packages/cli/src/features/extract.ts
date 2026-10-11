@@ -5,7 +5,8 @@ import {
   type FeatureRow,
   type FeatureVector,
 } from "@preflux/shared/ml";
-import { git, gitBuffer, tryGit } from "../git/exec.js";
+import { readBlobs } from "../git/blobs.js";
+import { git, tryGit } from "../git/exec.js";
 
 // Just-in-time bug-risk features, computed locally from git history.
 // Definitions: docs/features.md. Must match services/ml/training/features.py exactly;
@@ -144,28 +145,6 @@ function seedHistory(base: string, cwd: string): History {
   return history;
 }
 
-/** Line counts of `<sha>:<path>` blobs via one `git cat-file --batch`. */
-function lineCounts(specs: string[], cwd: string): number[] {
-  if (specs.length === 0) return [];
-  const out = gitBuffer(["cat-file", "--batch"], cwd, `${specs.join("\n")}\n`);
-  const counts: number[] = [];
-  let pos = 0;
-  for (let i = 0; i < specs.length; i++) {
-    const nl = out.indexOf(10, pos);
-    const header = out.subarray(pos, nl).toString("utf8");
-    pos = nl + 1;
-    const m = /^\S+ \S+ (\d+)$/.exec(header);
-    if (!m) {
-      counts.push(0); // "<spec> missing"
-      continue;
-    }
-    const size = Number(m[1]);
-    counts.push(countLines(out.subarray(pos, pos + size).toString("utf8")));
-    pos += size + 1; // content + trailing newline
-  }
-  return counts;
-}
-
 /** Feature rows for every (commit, analysed file) in the revision set, oldest commit first. */
 export function extractFeatures(revArgs: string[], cwd: string, maxRows = MAX_ROWS_PER_PUSH): ExtractResult {
   const pushed = parseCommits(
@@ -207,7 +186,7 @@ export function extractFeatures(revArgs: string[], cwd: string, maxRows = MAX_RO
   // Keep the most recent rows: those are the changes the developer just made.
   const truncated = rows.length > maxRows;
   const kept = truncated ? rows.slice(rows.length - maxRows) : rows;
-  const locs = lineCounts(kept.map((r) => `${r.commit}:${r.file}`), cwd);
+  const locs = readBlobs(kept.map((r) => `${r.commit}:${r.file}`), cwd).map((b) => (b === null ? 0 : countLines(b)));
   kept.forEach((r, i) => {
     r.features.loc = locs[i] ?? 0;
   });

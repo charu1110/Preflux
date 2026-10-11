@@ -5,6 +5,8 @@ import { isZeroSha, type PushedRef } from "./prePushInput.js";
 export interface RevisionSet {
   label: string;
   revArgs: string[];
+  /** The commit being pushed / scanned up to (compared against the base branch for conflicts). */
+  tip: string;
 }
 
 const short = (sha: string) => sha.slice(0, 7);
@@ -22,6 +24,7 @@ export function revisionsForPushedRef(ref: PushedRef, remoteName: string | undef
     return {
       label: `${ref.localRef} ${short(ref.remoteSha)}..${short(ref.localSha)}`,
       revArgs: [`${ref.remoteSha}..${ref.localSha}`],
+      tip: ref.localSha,
     };
   }
 
@@ -31,6 +34,7 @@ export function revisionsForPushedRef(ref: PushedRef, remoteName: string | undef
   return {
     label: `${ref.localRef} (new) ..${short(ref.localSha)}`,
     revArgs: [ref.localSha, "--not", notOnRemote],
+    tip: ref.localSha,
   };
 }
 
@@ -38,9 +42,9 @@ export function revisionsForPushedRef(ref: PushedRef, remoteName: string | undef
 export function unpushedRevisions(cwd: string): RevisionSet {
   const upstream = tryGit(["rev-parse", "--abbrev-ref", "--symbolic-full-name", "@{u}"], cwd)?.trim();
   if (upstream) {
-    return { label: `${upstream}..HEAD`, revArgs: ["@{u}..HEAD"] };
+    return { label: `${upstream}..HEAD`, revArgs: ["@{u}..HEAD"], tip: "HEAD" };
   }
-  return { label: "HEAD (not on any remote)", revArgs: ["HEAD", "--not", "--remotes"] };
+  return { label: "HEAD (not on any remote)", revArgs: ["HEAD", "--not", "--remotes"], tip: "HEAD" };
 }
 
 export function countCommits(revArgs: string[], cwd: string): number {

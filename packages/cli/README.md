@@ -1,7 +1,11 @@
 # preflux (CLI)
 
-Scans the commits you are about to push and **blocks the push if they contain a secret**: API keys, tokens, private keys, passwords, database URLs.
-Everything runs locally; nothing is sent anywhere.
+Checks the commits you're about to push:
+- **Secrets** (API keys, tokens, private keys, passwords, database URLs): **block the push**. Fully local.
+- **Bug risk:** an ML estimate per changed file. Only numeric features go to the Preflux ML service. See `docs/features.md`.
+- **Structural conflicts** with your team's base branch (`origin/main`): the same function edited on both sides, changed parameters vs. new callers, deleted vs. edited functions. Parsed locally with Tree-sitter. See `docs/conflicts.md`.
+
+Bug risk and conflicts are warnings: they never block a push.
 
 ## Install into a repository
 ```bash

@@ -4,7 +4,7 @@ import SystemStatus from "./components/SystemStatus";
 const STEPS = [
   { title: "You run git push", body: "The preflux pre-push hook starts automatically. There's nothing new to learn." },
   { title: "Preflux scans locally", body: "Every commit in the push is checked on your machine, before any network call." },
-  { title: "It gives a verdict", body: "Secrets always block the push. Each changed file also gets a bug-risk estimate from the ML model." },
+  { title: "It gives a verdict", body: "Secrets always block the push. Each changed file gets a bug-risk estimate, and clashes with teammates' work on main are flagged." },
   { title: "You get a clear fix", body: "Which file, which line, a masked preview, and exactly how to clean it up." },
 ];
 
@@ -21,8 +21,8 @@ const FEATURES = [
   },
   {
     name: "Structural conflict detection",
-    status: "Phase 3",
-    body: "Tree-sitter ASTs spot logic-level conflicts with the remote branch that line-based diffs miss.",
+    status: "live" as const,
+    body: "Tree-sitter parses JS/TS/Python into functions and classes to catch what Git merges silently: the same function edited by two people, or changed parameters vs. new callers.",
   },
   {
     name: "Push Safety Score + AI explanations",

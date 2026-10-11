@@ -70,6 +70,12 @@ ML service (run from `services/ml`, see `services/ml/README.md`):
 - Bug risk is informational until the Phase 4 score. It must never block a push, and any ML failure means "skipped".
 - Keep CLI git calls constant per push (batched `git log` / `cat-file --batch`). Spawning git per file is far too slow on Windows.
 
+## Conflict detection rules
+- Tree-sitter comes from `@vscode/tree-sitter-wasm` (prebuilt WASM, no node-gyp). Never switch to the native `tree-sitter-*` grammar packages: they need C++ build tools on Windows.
+- Syntax trees live in WASM memory: always go through `withSyntaxTree()` (`conflicts/parser.ts`), which frees them.
+- Conflicts are informational and fail-open, like bug risk. A failed fetch falls back to the last known `<remote>/<base>`.
+- New rules go in `conflicts/compare.ts` (pure) with a snippet test in `test/conflicts.test.ts`.
+
 ## Windows TLS note
 This machine intercepts HTTPS (antivirus/proxy root CA). Don't disable verification. Use the Windows certificate store instead:
 - **pip:** install through the global pip 25+ with `pip --python <venv python>`
@@ -96,7 +102,7 @@ This machine intercepts HTTPS (antivirus/proxy root CA). Don't disable verificat
 - [x] Phase 0: monorepo, CLAUDE.md, Next.js scaffold, Supabase helper
 - [x] Phase 1: Secret detection + CLI (`init`, `scan`) + husky pre-push hook. See `packages/cli/README.md`
 - [x] Phase 2: Bug-risk ML (dataset mining, SZZ, XGBoost, FastAPI /predict, CLI feature extraction + parity test). Results: `docs/ml-evaluation.md`
-- [ ] Phase 3: Tree-sitter structural conflict detection
+- [x] Phase 3: Tree-sitter structural conflict detection. See `docs/conflicts.md`
 - [ ] Phase 4: Scoring, redaction, LLM explanation layer (mock provider), terminal report
 - [ ] Phase 5: Supabase schema + RLS, auth, dashboard pages, /api/ingest, `preflux link`
 - [ ] Phase 6: E2E tests, tuning, comparison vs Gitleaks/TruffleHog, deployment, docs

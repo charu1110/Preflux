@@ -258,3 +258,84 @@ describe("bug-risk prediction", () => {
     }
   });
 });
+
+describe("structural conflict detection", () => {
+  const CALC = [
+    "function total(items) {",
+    "  let sum = 0;",
+    "  for (const i of items) sum += i;",
+    "  return sum;",
+    "}",
+    "",
+    "function average(items) {",
+    "  return items.length ? total(items) / items.length : 0;",
+    "}",
+    "",
+  ].join("\n");
+  let mate: string;
+  const gitIn = (cwd: string, ...args: string[]) => {
+    const r = run("git", args, cwd);
+    if (r.code !== 0) throw new Error(`git ${args.join(" ")} failed:\n${r.out}`);
+    return r.out.trim();
+  };
+
+  beforeAll(() => {
+    // Our side: calc.js lands on main.
+    gitOk("checkout", "-q", "main");
+    commitFile("calc.js", CALC, "add calc");
+    expect(run("git", ["push", "-q", "origin", "main"]).code).toBe(0);
+
+    // A teammate clones, edits the END of total() and pushes to main (no hook on their machine).
+    mate = join(base, "mate");
+    run("git", ["clone", "-q", join(base, "remote.git"), mate], base);
+    gitIn(mate, "config", "user.email", "mate@preflux.local");
+    gitIn(mate, "config", "user.name", "Mate");
+    writeFileSync(join(mate, "calc.js"), CALC.replace("return sum;", "return Math.round(sum);"));
+    gitIn(mate, "commit", "-qam", "Round totals");
+    gitIn(mate, "push", "-q", "origin", "main");
+  });
+
+  it("warns when we edit the same function on a branch, even though Git would merge cleanly", () => {
+    // We edit the START of total() on a feature branch, without having fetched the teammate's work.
+    gitOk("checkout", "-q", "-b", "feature/discount", "main");
+    writeFileSync(join(work, "calc.js"), CALC.replace("let sum = 0;", "let sum = 0; // before discount"));
+    gitOk("commit", "-qam", "Prepare discount");
+
+    const push = run("git", ["push", "origin", "feature/discount"]);
+    expect(push.code, push.out).toBe(0); // informational: never blocks
+    expect(push.out).toMatch(/conflicts\s+1 possible conflict \(compared with origin\/main\)/);
+    expect(push.out).toContain("calc.js:1");
+    expect(push.out).toMatch(/total\(\) was also edited on origin\/main \([0-9a-f]{7} by Mate\)/);
+    expect(push.out).toContain("merge them silently");
+    expect(push.out).toContain("PUSH ALLOWED");
+  });
+
+  it("includes conflicts in --json and stays quiet when nothing overlaps", () => {
+    const report = JSON.parse(run("node", [CLI, "scan", "--json", "--range", "main..feature/discount"]).out);
+    expect(report.modules.conflicts.status).toBe("ok");
+    expect(report.findings).toContainEqual(
+      expect.objectContaining({ kind: "conflict", ruleId: "conflict-same-function", severity: "high", file: "calc.js", line: 1 }),
+    );
+
+    // A branch that only touches average() doesn't clash with the teammate's total() edit.
+    gitOk("checkout", "-q", "-b", "feature/mean", "main");
+    writeFileSync(join(work, "calc.js"), CALC.replace(": 0;", ": NaN;"));
+    gitOk("commit", "-qam", "NaN for empty");
+    const clean = JSON.parse(run("node", [CLI, "scan", "--json", "--range", "main..feature/mean"]).out);
+    expect(clean.modules.conflicts.status).toBe("ok");
+    expect(clean.findings.filter((f: { kind: string }) => f.kind === "conflict")).toEqual([]);
+  });
+
+  it("falls back to the last known base branch when the fetch fails", () => {
+    gitOk("checkout", "-q", "feature/discount");
+    const url = gitOk("remote", "get-url", "origin");
+    gitOk("remote", "set-url", "origin", join(base, "does-not-exist.git"));
+    try {
+      const report = JSON.parse(run("node", [CLI, "scan", "--json", "--range", "main..feature/discount"]).out);
+      expect(report.modules.conflicts.reason).toContain("could not fetch origin/main; used the last known state");
+      expect(report.findings.some((f: { ruleId: string }) => f.ruleId === "conflict-same-function")).toBe(true);
+    } finally {
+      gitOk("remote", "set-url", "origin", url);
+    }
+  });
+});

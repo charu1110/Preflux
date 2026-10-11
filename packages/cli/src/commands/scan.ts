@@ -1,10 +1,11 @@
 import { basename } from "node:path";
-import type { ModuleResult, ScanRange, ScanReport } from "@preflux/shared";
+import type { ScanRange, ScanReport } from "@preflux/shared";
 import { loadConfig } from "../config.js";
 import { addedLinesForRevisions, addedLinesStaged, type AddedLine } from "../git/diff.js";
 import { repoRoot } from "../git/exec.js";
 import { parsePrePushInput, readStdin } from "../git/prePushInput.js";
 import { countCommits, revisionsForPushedRef, unpushedRevisions, type RevisionSet } from "../git/range.js";
+import { runConflicts } from "../conflicts/analyze.js";
 import { runBugRisk } from "../features/bugRisk.js";
 import { renderReport } from "../report/terminal.js";
 import { loadAllowlist } from "../secrets/allowlist.js";
@@ -23,10 +24,11 @@ export interface ScanOptions {
   stdin?: string;
 }
 
-const NOT_YET = (phase: string): ModuleResult => ({ status: "skipped", reason: `arrives in ${phase}`, durationMs: 0 });
-
 async function resolveRevisions(opts: ScanOptions, root: string): Promise<RevisionSet[]> {
-  if (opts.range) return [{ label: opts.range, revArgs: [opts.range] }];
+  if (opts.range) {
+    const tip = opts.range.includes("..") ? opts.range.split(/\.{2,3}/)[1] || "HEAD" : opts.range;
+    return [{ label: opts.range, revArgs: [opts.range], tip }];
+  }
   if (opts.hook) {
     const refs = parsePrePushInput(opts.stdin ?? (await readStdin()));
     return refs.map((r) => revisionsForPushedRef(r, opts.remote, root)).filter((r): r is RevisionSet => r !== null);
@@ -61,7 +63,12 @@ export async function runScan(opts: ScanOptions): Promise<ScanReport> {
   const bugRisk = opts.staged
     ? { findings: [], module: { status: "skipped" as const, reason: "needs commits (not available with --staged)", durationMs: 0 } }
     : await runBugRisk(sets, root, config.ml);
-  const findings = [...secretFindings, ...bugRisk.findings];
+
+  // 3. Structural conflicts with the team's base branch. Informational until Phase 4.
+  const conflicts = opts.staged
+    ? { findings: [], module: { status: "skipped" as const, reason: "needs commits (not available with --staged)", durationMs: 0 } }
+    : await runConflicts(sets.map((s) => s.tip), opts.remote && !opts.remote.includes("/") && !opts.remote.includes(":") ? opts.remote : "origin", config.conflicts, root);
+  const findings = [...secretFindings, ...bugRisk.findings, ...conflicts.findings];
 
   return {
     version: 1,
@@ -78,7 +85,7 @@ export async function runScan(opts: ScanOptions): Promise<ScanReport> {
     modules: {
       secrets: { status: "ok", durationMs: secretsMs },
       bugRisk: bugRisk.module,
-      conflicts: NOT_YET("Phase 3"),
+      conflicts: conflicts.module,
     },
   };
 }

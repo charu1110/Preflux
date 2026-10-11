@@ -11,6 +11,17 @@ export interface PrefluxConfig {
   };
   score: ScoreConfig;
   ml: MlConfig;
+  conflicts: ConflictsConfig;
+}
+
+export interface ConflictsConfig {
+  /** Set false to skip structural conflict detection. */
+  enabled: boolean;
+  /** Branch to compare with on the remote: "auto" uses the remote's default branch (origin/HEAD, main, master). */
+  baseBranch: string;
+  /** Fetch the base branch before comparing (inside the hook). Falls back to the last known state on failure. */
+  fetch: boolean;
+  fetchTimeoutMs: number;
 }
 
 export interface MlConfig {
@@ -31,6 +42,7 @@ export const DEFAULT_CONFIG: PrefluxConfig = {
   },
   score: DEFAULT_SCORE_CONFIG,
   ml: { enabled: true, url: "http://127.0.0.1:8000", timeoutMs: 5000 },
+  conflicts: { enabled: true, baseBranch: "auto", fetch: true, fetchTimeoutMs: 15000 },
 };
 
 type DeepPartial<T> = { [K in keyof T]?: T[K] extends object ? DeepPartial<T[K]> : T[K] };
@@ -60,5 +72,6 @@ function readConfigFile(root: string): PrefluxConfig {
       thresholds: { ...DEFAULT_CONFIG.score.thresholds, ...user.score?.thresholds },
     },
     ml: { ...DEFAULT_CONFIG.ml, ...user.ml },
+    conflicts: { ...DEFAULT_CONFIG.conflicts, ...user.conflicts },
   };
 }
