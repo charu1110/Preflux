@@ -8,6 +8,7 @@ import { countCommits, revisionsForPushedRef, unpushedRevisions, type RevisionSe
 import { runConflicts } from "../conflicts/analyze.js";
 import { runBugRisk } from "../features/bugRisk.js";
 import { renderReport } from "../report/terminal.js";
+import { pushSafetyScore } from "../score/pushSafetyScore.js";
 import { loadAllowlist } from "../secrets/allowlist.js";
 import { scanAddedLines } from "../secrets/scanner.js";
 import { VERSION } from "../version.js";
@@ -22,7 +23,11 @@ export interface ScanOptions {
   cwd?: string;
   /** Pre-push stdin; read from process.stdin when omitted in hook mode. */
   stdin?: string;
+  /** Override a score-based block (also PREFLUX_FORCE=1). Never overrides secrets. */
+  force?: boolean;
 }
+
+const envForce = () => /^(1|true|yes)$/i.test(process.env.PREFLUX_FORCE ?? "");
 
 async function resolveRevisions(opts: ScanOptions, root: string): Promise<RevisionSet[]> {
   if (opts.range) {
@@ -59,16 +64,26 @@ export async function runScan(opts: ScanOptions): Promise<ScanReport> {
   const secretFindings = scanAddedLines(added, allowlist, config.secrets.entropy);
   const secretsMs = Math.round(performance.now() - t0);
 
-  // 2. Bug risk: numeric features only leave the machine. Informational until Phase 4.
+  // 2. Bug risk: numeric features only leave the machine.
   const bugRisk = opts.staged
     ? { findings: [], module: { status: "skipped" as const, reason: "needs commits (not available with --staged)", durationMs: 0 } }
     : await runBugRisk(sets, root, config.ml);
 
-  // 3. Structural conflicts with the team's base branch. Informational until Phase 4.
+  // 3. Structural conflicts with the team's base branch.
   const conflicts = opts.staged
     ? { findings: [], module: { status: "skipped" as const, reason: "needs commits (not available with --staged)", durationMs: 0 } }
     : await runConflicts(sets.map((s) => s.tip), opts.remote && !opts.remote.includes("/") && !opts.remote.includes(":") ? opts.remote : "origin", config.conflicts, root);
   const findings = [...secretFindings, ...bugRisk.findings, ...conflicts.findings];
+
+  // 4. Push Safety Score: secrets always block; otherwise bug risk + conflicts decide.
+  const result = pushSafetyScore({
+    findings,
+    bugRiskModule: bugRisk.module,
+    conflictsModule: conflicts.module,
+    bugRiskThreshold: "threshold" in bugRisk ? bugRisk.threshold : undefined,
+    config: config.score,
+  });
+  const forced = result.blockedBy === "score" && (opts.force === true || envForce());
 
   return {
     version: 1,
@@ -78,10 +93,11 @@ export async function runScan(opts: ScanOptions): Promise<ScanReport> {
     repo: basename(root),
     ranges,
     findings,
-    score: null,
-    // Hard override: any secret blocks the push, whatever the other modules say.
-    decision: secretFindings.length > 0 ? "block" : "allow",
-    forced: false,
+    score: result.score,
+    scoreBreakdown: { bugRisk: result.bugRisk, conflictRisk: result.conflictRisk },
+    decision: result.decision,
+    blockedBy: result.blockedBy,
+    forced,
     modules: {
       secrets: { status: "ok", durationMs: secretsMs },
       bugRisk: bugRisk.module,
@@ -96,7 +112,7 @@ export async function scanCommand(opts: ScanOptions): Promise<number> {
     const report = await runScan(opts);
     if (opts.json) process.stdout.write(`${JSON.stringify(report, null, 2)}\n`);
     else process.stderr.write(`${renderReport(report)}\n`);
-    return report.decision === "block" ? 1 : 0;
+    return report.decision === "block" && !report.forced ? 1 : 0;
   } catch (err) {
     process.stderr.write(`preflux: ${(err as Error).message}\n`);
     if (opts.hook) {

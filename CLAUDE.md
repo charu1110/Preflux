@@ -67,13 +67,14 @@ ML service (run from `services/ml`, see `services/ml/README.md`):
 ## Bug-risk rules
 - **Feature definitions live in `packages/shared/src/ml/features.json` + `docs/features.md`.** Any change must be made in *both* `packages/cli/src/features/extract.ts` and `services/ml/training/features.py`. Then regenerate `fixtures/feature-repo.expected.json` (see `services/ml/README.md`) and retrain.
 - The CLI sends `/predict` only numbers and opaque ids (`r0`, `r1`…). Never send file paths, code or commit messages.
-- Bug risk is informational until the Phase 4 score. It must never block a push, and any ML failure means "skipped".
+- Bug risk never blocks on its own: it feeds the Push Safety Score (`docs/scoring.md`). Any ML failure means "skipped", and a skipped module adds no score penalty.
 - Keep CLI git calls constant per push (batched `git log` / `cat-file --batch`). Spawning git per file is far too slow on Windows.
 
 ## Conflict detection rules
 - Tree-sitter comes from `@vscode/tree-sitter-wasm` (prebuilt WASM, no node-gyp). Never switch to the native `tree-sitter-*` grammar packages: they need C++ build tools on Windows.
 - Syntax trees live in WASM memory: always go through `withSyntaxTree()` (`conflicts/parser.ts`), which frees them.
-- Conflicts are informational and fail-open, like bug risk. A failed fetch falls back to the last known `<remote>/<base>`.
+- Conflicts feed the Push Safety Score (high = 1.0, medium = 0.5) and are fail-open, like bug risk. A failed fetch falls back to the last known `<remote>/<base>`.
+- Score rules: secrets always block (score 0, can't be forced). Otherwise ≥70 allow, 40–69 warn, <40 block, and `PREFLUX_FORCE=1` overrides a score block (recorded as `forced`).
 - New rules go in `conflicts/compare.ts` (pure) with a snippet test in `test/conflicts.test.ts`.
 
 ## Windows TLS note
@@ -103,6 +104,6 @@ This machine intercepts HTTPS (antivirus/proxy root CA). Don't disable verificat
 - [x] Phase 1: Secret detection + CLI (`init`, `scan`) + husky pre-push hook. See `packages/cli/README.md`
 - [x] Phase 2: Bug-risk ML (dataset mining, SZZ, XGBoost, FastAPI /predict, CLI feature extraction + parity test). Results: `docs/ml-evaluation.md`
 - [x] Phase 3: Tree-sitter structural conflict detection. See `docs/conflicts.md`
-- [ ] Phase 4: Scoring, redaction, LLM explanation layer (mock provider), terminal report
+- [ ] Phase 4: ~~Scoring~~ (done: `docs/scoring.md`), redaction, LLM explanation layer (mock provider)
 - [ ] Phase 5: Supabase schema + RLS, auth, dashboard pages, /api/ingest, `preflux link`
 - [ ] Phase 6: E2E tests, tuning, comparison vs Gitleaks/TruffleHog, deployment, docs

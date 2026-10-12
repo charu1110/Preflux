@@ -54,9 +54,14 @@ export interface ScanReport {
   repo: string;
   ranges: ScanRange[];
   findings: Finding[];
-  /** Push Safety Score 0-100; null until bug-risk and conflict modules exist. */
+  /** Push Safety Score 0-100 (0 whenever a secret is found). */
   score: number | null;
+  /** The two score inputs (0-1); null when that module was skipped. */
+  scoreBreakdown?: { bugRisk: number | null; conflictRisk: number | null };
   decision: Decision;
+  /** Why the push was blocked, if it was. */
+  blockedBy?: "secrets" | "score" | null;
+  /** A score-based block was overridden (PREFLUX_FORCE=1 or --force). Secret blocks can't be forced. */
   forced: boolean;
   modules: Record<ModuleName, ModuleResult>;
 }

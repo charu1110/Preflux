@@ -47,6 +47,28 @@ function formatConflict(f: Finding): string {
   return [`     ${color(level)}  ${chalk.cyan(where)}  ${chalk.gray(f.ruleId.replace(/^conflict-/, ""))}`, `           ${f.message}`].join("\n");
 }
 
+function formatScore(report: ScanReport): string {
+  const score = report.score ?? 0;
+  const color = report.decision === "block" ? chalk.red.bold : report.decision === "warn" ? chalk.yellow.bold : chalk.green.bold;
+  const part = (label: string, v: number | null | undefined) => (v === null || v === undefined ? `${label} n/a` : `${label} ${v.toFixed(2)}`);
+  const b = report.scoreBreakdown;
+  const detail =
+    report.blockedBy === "secrets" ? "secrets found" : `${part("bug risk", b?.bugRisk)} × 0.6 · ${part("conflicts", b?.conflictRisk)} × 0.4`;
+  return `  ${chalk.bold("Push Safety Score")}  ${color(`${score}/100`)}  ${chalk.gray(`(${detail})`)}`;
+}
+
+/** One-line reasons behind a warning or a score-based block. */
+function highlights(report: ScanReport): string[] {
+  const out: string[] = [];
+  const high = report.findings.filter((f) => f.kind === "bug_risk" && f.severity === "high").length;
+  if (high > 0) out.push(`${high} high bug-risk file${high === 1 ? "" : "s"}: worth an extra review or a test before merging.`);
+  const conflicts = report.findings.filter((f) => f.kind === "conflict").length;
+  if (conflicts > 0) {
+    out.push(`${conflicts} possible merge conflict${conflicts === 1 ? "" : "s"} with the base branch: coordinate with your teammates before merging.`);
+  }
+  return out;
+}
+
 export function renderReport(report: ScanReport): string {
   const out: string[] = [];
   const commits = report.ranges.reduce((n, r) => n + r.commits, 0);
@@ -87,8 +109,9 @@ export function renderReport(report: ScanReport): string {
     }
   }
   out.push("");
+  if (report.score !== null) out.push(formatScore(report), "");
 
-  if (report.decision === "block") {
+  if (report.blockedBy === "secrets") {
     out.push(chalk.bgRed.white.bold(" PUSH BLOCKED ") + chalk.red.bold(" secrets detected in the commits being pushed."));
     out.push(
       "",
@@ -104,22 +127,34 @@ export function renderReport(report: ScanReport): string {
       chalk.gray("   Emergency bypass (not recommended): git push --no-verify"),
       "",
     );
+  } else if (report.decision === "block" && !report.forced) {
+    out.push(chalk.bgRed.white.bold(" PUSH BLOCKED ") + chalk.red.bold(` Push Safety Score ${report.score}/100 is too low.`));
+    out.push(
+      "",
+      chalk.bold("  How to fix:"),
+      ...highlights(report).map((h) => `   • ${h}`),
+      "   • Bring in your team's latest work and resolve the clashes first, e.g.  git pull --rebase origin main",
+      "   • Split very large changes into smaller commits, and add tests for the risky files.",
+      "",
+      chalk.bold("  Sure it's fine?"),
+      `   Override once (recorded):  ${chalk.cyan("$env:PREFLUX_FORCE=1; git push")}   ${chalk.gray("(PowerShell)")}`,
+      `                              ${chalk.cyan("PREFLUX_FORCE=1 git push")}          ${chalk.gray("(bash)")}`,
+      "",
+    );
+  } else if (report.forced) {
+    out.push(
+      chalk.bgYellow.black.bold(" PUSH ALLOWED (FORCED) ") + chalk.yellow(` Push Safety Score ${report.score}/100 would have blocked this push.`),
+      "",
+    );
+  } else if (report.decision === "warn") {
+    out.push(chalk.bgYellow.black.bold(" PUSH ALLOWED WITH WARNINGS ") + chalk.yellow(` Push Safety Score ${report.score}/100.`), "");
+    for (const h of highlights(report)) out.push(chalk.yellow(`  ⚠ ${h}`));
+    out.push("");
   } else {
     out.push(chalk.bgGreen.black.bold(" PUSH ALLOWED ") + chalk.green(" no secrets found."), "");
-    const high = report.findings.filter((f) => f.kind === "bug_risk" && f.severity === "high").length;
-    if (high > 0) {
-      out.push(
-        chalk.yellow(`  ⚠ ${high} high bug-risk file${high === 1 ? "" : "s"}: worth an extra review or a test before merging.`),
-        "",
-      );
-    }
-    const conflicts = report.findings.filter((f) => f.kind === "conflict").length;
-    if (conflicts > 0) {
-      out.push(
-        chalk.yellow(`  ⚠ ${conflicts} possible merge conflict${conflicts === 1 ? "" : "s"} with the base branch: coordinate with your teammates before merging.`),
-        "",
-      );
-    }
+    const notes = highlights(report);
+    for (const h of notes) out.push(chalk.yellow(`  ⚠ ${h}`));
+    if (notes.length > 0) out.push("");
   }
   return out.join("\n");
 }

@@ -338,4 +338,67 @@ describe("structural conflict detection", () => {
       gitOk("remote", "set-url", "origin", url);
     }
   });
+
+  it("warns (but allows) a push whose only problem is the conflict", () => {
+    const report = JSON.parse(run("node", [CLI, "scan", "--json", "--range", "main..feature/discount"]).out);
+    expect(report).toMatchObject({ score: 60, decision: "warn", blockedBy: null, scoreBreakdown: { conflictRisk: 1 } });
+  });
 });
+
+describe("Push Safety Score", () => {
+  // The model says every change is very risky (95%), on top of the conflict with the teammate's work.
+  const alarmed = () => startMlStub((body) => ({
+    body: { model_version: "stub", threshold: 0.2, rows: body.rows.map((r) => ({ id: r.id, probability: 0.95, level: "high" })) },
+  }));
+
+  it("blocks a push when high bug risk and a conflict come together", async () => {
+    const stub = await alarmed();
+    try {
+      gitOk("checkout", "-q", "feature/discount");
+      writeFileSync(join(work, "calc.js"), CALC_WITH_DISCOUNT);
+      gitOk("commit", "-qam", "Apply discount in total");
+      const push = await runAsync("git", ["push", "origin", "feature/discount"], { PREFLUX_ML_URL: stub.url });
+      expect(push.code).not.toBe(0);
+      // This edit also touches the teammate's `return` line, so Git sees a text conflict too:
+      // the structural finding is "medium" (Git will flag it anyway) -> conflicts 0.5.
+      expect(push.out).toMatch(/Push Safety Score\s+20\/100\s+\(bug risk 1\.00 × 0\.6 · conflicts 0\.50 × 0\.4\)/);
+      expect(push.out).toContain("PUSH BLOCKED");
+      expect(push.out).toContain("Push Safety Score 20/100 is too low");
+      expect(push.out).toContain("PREFLUX_FORCE=1");
+    } finally {
+      await stub.close();
+    }
+  });
+
+  it("lets the developer override a score block once with PREFLUX_FORCE=1", async () => {
+    const stub = await alarmed();
+    try {
+      const push = await runAsync("git", ["push", "origin", "feature/discount"], { PREFLUX_ML_URL: stub.url, PREFLUX_FORCE: "1" });
+      expect(push.code, push.out).toBe(0);
+      expect(push.out).toContain("PUSH ALLOWED (FORCED)");
+    } finally {
+      await stub.close();
+    }
+  });
+
+  it("never lets PREFLUX_FORCE override a secret", async () => {
+    commitFile("token.js", `module.exports = "${fake.githubToken()}";\n`, "add token");
+    const push = await runAsync("git", ["push", "origin", "feature/discount"], { PREFLUX_FORCE: "1" });
+    expect(push.code).not.toBe(0);
+    expect(push.out).toContain("secrets detected");
+    gitOk("reset", "-q", "--hard", "HEAD~1");
+  });
+});
+
+const CALC_WITH_DISCOUNT = [
+  "function total(items, discount = 0) {",
+  "  let sum = 0; // before discount",
+  "  for (const i of items) sum += i;",
+  "  return sum * (1 - discount);",
+  "}",
+  "",
+  "function average(items) {",
+  "  return items.length ? total(items) / items.length : 0;",
+  "}",
+  "",
+].join("\n");

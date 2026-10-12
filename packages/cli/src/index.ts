@@ -28,7 +28,8 @@ program
   .option("--staged", "scan staged changes instead of commits")
   .option("--range <revisions>", "scan a git revision range, e.g. main..feature")
   .option("--json", "print the report as JSON on stdout")
-  .action(async (remote: string | undefined, _url: string | undefined, opts: { hook?: boolean; staged?: boolean; range?: string; json?: boolean }) => {
+  .option("--force", "override a block caused by a low Push Safety Score (never overrides secrets); in the hook use PREFLUX_FORCE=1")
+  .action(async (remote: string | undefined, _url: string | undefined, opts: { hook?: boolean; staged?: boolean; range?: string; json?: boolean; force?: boolean }) => {
     process.exitCode = await scanCommand({ ...opts, remote });
   });
 

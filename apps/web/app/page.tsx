@@ -25,9 +25,9 @@ const FEATURES = [
     body: "Tree-sitter parses JS/TS/Python into functions and classes to catch what Git merges silently: the same function edited by two people, or changed parameters vs. new callers.",
   },
   {
-    name: "Push Safety Score + AI explanations",
-    status: "Phase 4",
-    body: "One 0–100 score per push. An LLM explains findings in plain English, but never makes the decision.",
+    name: "Push Safety Score",
+    status: "live" as const,
+    body: "Bug risk and conflicts combine into one 0–100 score: 70+ allows, 40–69 warns, below 40 blocks. Secrets always block. AI explanations come next.",
   },
   {
     name: "Team dashboard",

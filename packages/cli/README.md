@@ -5,7 +5,7 @@ Checks the commits you're about to push:
 - **Bug risk:** an ML estimate per changed file. Only numeric features go to the Preflux ML service. See `docs/features.md`.
 - **Structural conflicts** with your team's base branch (`origin/main`): the same function edited on both sides, changed parameters vs. new callers, deleted vs. edited functions. Parsed locally with Tree-sitter. See `docs/conflicts.md`.
 
-Bug risk and conflicts are warnings: they never block a push.
+Bug risk and conflicts combine into a **Push Safety Score** (0–100): ≥ 70 allows, 40–69 allows with warnings, < 40 blocks (override once with `PREFLUX_FORCE=1`). Secrets always block. See `docs/scoring.md`.
 
 ## Install into a repository
 ```bash

@@ -10,6 +10,8 @@ const LEVEL_SEVERITY: Record<RiskLevel, Severity> = { high: "high", medium: "med
 export interface BugRiskResult {
   findings: Finding[];
   module: ModuleResult;
+  /** The model's "high" cut-off, used to scale bug risk in the Push Safety Score. */
+  threshold?: number;
 }
 
 function skipped(reason: string, started: number): BugRiskResult {
@@ -18,8 +20,8 @@ function skipped(reason: string, started: number): BugRiskResult {
 
 /**
  * Extract change features locally, ask the ML service for probabilities, and report the riskiest
- * change per file. Informational only: bug risk never blocks a push on its own (Phase 4 adds the
- * Push Safety Score). Fails open: any problem means "skipped", never an error.
+ * change per file. It feeds the Push Safety Score (score/pushSafetyScore.ts).
+ * Fails open: any problem means "skipped" (and no score penalty), never an error.
  */
 export async function runBugRisk(sets: RevisionSet[], root: string, ml: MlConfig): Promise<BugRiskResult> {
   const started = performance.now();
@@ -72,6 +74,7 @@ export async function runBugRisk(sets: RevisionSet[], root: string, ml: MlConfig
 
   return {
     findings,
+    threshold: result.data.threshold,
     module: {
       status: "ok",
       reason: truncated ? `analysed the most recent ${MAX_ROWS_PER_PUSH} file changes` : undefined,
