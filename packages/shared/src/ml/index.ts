@@ -42,7 +42,15 @@ export interface PredictRequest {
 export interface PredictResponse {
   model_version: string;
   threshold: number;
-  rows: Array<{ id: string; probability: number; level: RiskLevel }>;
+  rows: Array<{
+    id: string;
+    probability: number;
+    level: RiskLevel;
+    /** Share of past changes (0-100) the model rated as less risky. */
+    percentile?: number | null;
+    /** Features that pushed this prediction up the most (XGBoost contributions, largest first). */
+    reasons?: Array<{ feature: FeatureName; value: number; impact: number }>;
+  }>;
 }
 
 export function isAnalysedFile(path: string): boolean {

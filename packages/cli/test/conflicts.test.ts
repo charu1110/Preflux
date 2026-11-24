@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { findConflicts, symbolChanges, type SideFile } from "../src/conflicts/compare.js";
+import { findCollisions, findConflicts, symbolChanges, type SideFile } from "../src/conflicts/compare.js";
 import { fileStructure } from "../src/conflicts/symbols.js";
 
 // Each case: base, ours and theirs versions of files, as a three-way merge would see them.
@@ -176,5 +176,30 @@ describe("structural conflict rules", () => {
   it("reports plain text conflicts in files without structural findings", async () => {
     const found = await conflicts({ "README.md": "a" }, { "README.md": "b" }, { "README.md": "c" }, ["README.md"]);
     expect(found).toEqual([expect.objectContaining({ ruleId: "conflict-text", severity: "medium", file: "README.md", line: undefined })]);
+  });
+});
+
+describe("Collision Radar", () => {
+  it("gives a low-severity heads-up when a teammate's branch changes the same function", async () => {
+    const base = { "calc.js": CALC_JS };
+    const ours = await side(base, { "calc.js": CALC_JS.replace("let sum = 0;", "let sum = 0; // a") });
+    const theirs = await side(base, { "calc.js": CALC_JS.replace("return sum;", "return sum | 0;") });
+    expect(findCollisions(ours, theirs, "Priya", "feature/coupons")).toEqual([
+      expect.objectContaining({
+        kind: "conflict",
+        ruleId: "collision-branch",
+        severity: "low",
+        file: "calc.js",
+        line: 1,
+        message: "Priya is also changing total() on branch feature/coupons (not merged yet). Agree on who changes what before you both merge.",
+      }),
+    ]);
+  });
+
+  it("stays quiet for different functions or identical edits", async () => {
+    const base = { "calc.js": CALC_JS };
+    const ours = await side(base, { "calc.js": CALC_JS.replace("let sum = 0;", "let sum = 0; // a") });
+    expect(findCollisions(ours, await side(base, { "calc.js": CALC_JS.replace(": 0;", ": NaN;") }), "Priya", "x")).toEqual([]);
+    expect(findCollisions(ours, ours, "Priya", "x")).toEqual([]);
   });
 });

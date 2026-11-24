@@ -17,12 +17,12 @@ const FEATURES = [
   {
     name: "Bug-risk prediction",
     status: "live" as const,
-    body: "An XGBoost model trained on 21,000 SZZ-labelled changes from 6 open-source repos scores every pushed file (ROC-AUC 0.75). Only numbers leave your machine.",
+    body: "An XGBoost model trained on 21,000 real changes scores every file and explains why: \"riskier than 89% of past changes, because 61 people edited this file\". Only numbers leave your machine.",
   },
   {
     name: "Structural conflict detection",
     status: "live" as const,
-    body: "Tree-sitter parses JS/TS/Python into functions and classes to catch what Git merges silently: the same function edited by two people, or changed parameters vs. new callers.",
+    body: "Tree-sitter parses JS/TS/Python into functions to catch what Git merges silently. The Collision Radar also warns when a teammate's unmerged branch is changing the same function.",
   },
   {
     name: "Push Safety Score",
@@ -30,9 +30,9 @@ const FEATURES = [
     body: "Bug risk and conflicts combine into one 0–100 score: 70+ allows, 40–69 warns, below 40 blocks. Secrets always block. AI explanations come next.",
   },
   {
-    name: "Team dashboard",
-    status: "Phase 5",
-    body: "Repository health, bug-risk trends and an audit trail of blocked and allowed pushes, per project.",
+    name: "Team dashboard & PR bot",
+    status: "live" as const,
+    body: "Every push and pull request on one page: scores, files that keep getting flagged, team collisions and secrets stopped. A GitHub Action comments on each PR.",
   },
 ];
 
@@ -48,6 +48,7 @@ export default function Home() {
             <a href="#try" className="hover:text-violet-600">Try it</a>
             <a href="#how" className="hover:text-violet-600">How it works</a>
             <a href="#roadmap" className="hover:text-violet-600">Roadmap</a>
+            <a href="/dashboard" className="font-medium text-violet-600 hover:text-violet-700">Dashboard</a>
           </div>
         </nav>
       </header>
@@ -74,6 +75,12 @@ export default function Home() {
               className="rounded-lg border border-zinc-300 px-5 py-2.5 font-medium hover:bg-zinc-100 dark:border-zinc-700 dark:hover:bg-zinc-800"
             >
               How it works
+            </a>
+            <a
+              href="/dashboard"
+              className="rounded-lg border border-zinc-300 px-5 py-2.5 font-medium hover:bg-zinc-100 dark:border-zinc-700 dark:hover:bg-zinc-800"
+            >
+              Open team dashboard
             </a>
           </div>
         </section>

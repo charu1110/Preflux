@@ -27,6 +27,10 @@ export interface Finding {
   fingerprint?: string;
   /** Bug-risk findings: model probability (0-1) that this change introduces a defect. */
   probability?: number;
+  /** Bug-risk findings: share of past changes (0-100) that were rated less risky. */
+  percentile?: number;
+  /** Plain-English reasons behind the finding, most important first. */
+  reasons?: string[];
   /** Plain-English explanation (filled by the explanation layer in Phase 4). */
   explanation?: string;
 }
@@ -49,7 +53,7 @@ export interface ScanReport {
   version: 1;
   tool: { name: "preflux"; version: string };
   startedAt: string;
-  mode: "hook" | "manual" | "staged";
+  mode: "hook" | "manual" | "staged" | "ci";
   /** Repository folder name only (never an absolute path). */
   repo: string;
   ranges: ScanRange[];

@@ -208,8 +208,9 @@ describe("bug-risk prediction", () => {
       const push = await runAsync("git", ["push", "origin", "main"], { PREFLUX_ML_URL: stub.url });
       expect(push.code, push.out).toBe(0);
       expect(push.out).toMatch(/bug risk\s+2 files analysed/);
-      expect(push.out).toMatch(/90% HIGH\s+big\.ts/);
-      expect(push.out).toMatch(/5% LOW\s+small\.js/);
+      expect(push.out).toMatch(/HIGH\s+big\.ts\s+riskier than 90% of past changes/);
+      expect(push.out).toContain("why: big change (+90 lines)");
+      expect(push.out).toMatch(/LOW\s+small\.js\s+riskier than 5% of past changes/);
       expect(push.out).toContain("1 high bug-risk file");
 
       expect(stub.requests).toHaveLength(1);
@@ -303,7 +304,7 @@ describe("structural conflict detection", () => {
 
     const push = run("git", ["push", "origin", "feature/discount"]);
     expect(push.code, push.out).toBe(0); // informational: never blocks
-    expect(push.out).toMatch(/conflicts\s+1 possible conflict \(compared with origin\/main\)/);
+    expect(push.out).toMatch(/conflicts\s+1 possible conflict \(compared with origin\/main and 0 teammate branches\)/);
     expect(push.out).toContain("calc.js:1");
     expect(push.out).toMatch(/total\(\) was also edited on origin\/main \([0-9a-f]{7} by Mate\)/);
     expect(push.out).toContain("merge them silently");
@@ -332,7 +333,7 @@ describe("structural conflict detection", () => {
     gitOk("remote", "set-url", "origin", join(base, "does-not-exist.git"));
     try {
       const report = JSON.parse(run("node", [CLI, "scan", "--json", "--range", "main..feature/discount"]).out);
-      expect(report.modules.conflicts.reason).toContain("could not fetch origin/main; used the last known state");
+      expect(report.modules.conflicts.reason).toContain("could not fetch origin; used the last known state");
       expect(report.findings.some((f: { ruleId: string }) => f.ruleId === "conflict-same-function")).toBe(true);
     } finally {
       gitOk("remote", "set-url", "origin", url);
@@ -342,6 +343,26 @@ describe("structural conflict detection", () => {
   it("warns (but allows) a push whose only problem is the conflict", () => {
     const report = JSON.parse(run("node", [CLI, "scan", "--json", "--range", "main..feature/discount"]).out);
     expect(report).toMatchObject({ score: 60, decision: "warn", blockedBy: null, scoreBreakdown: { conflictRisk: 1 } });
+  });
+
+  it("Collision Radar: a heads-up when a teammate's unmerged branch changes the same function", () => {
+    // The teammate starts work on average() in their own branch and pushes it (not merged).
+    gitIn(mate, "checkout", "-q", "-b", "feature/coupons");
+    writeFileSync(join(mate, "calc.js"), readFileSync(join(mate, "calc.js"), "utf8").replace("? total(items) / items.length", "? total(items) / Math.max(1, items.length)"));
+    gitIn(mate, "commit", "-qam", "Guard average");
+    gitIn(mate, "push", "-q", "origin", "feature/coupons");
+
+    // We change average() too, on our own branch.
+    gitOk("checkout", "-q", "-b", "feature/stats", "main");
+    writeFileSync(join(work, "calc.js"), CALC.replace("return items.length ?", "return items && items.length ?"));
+    gitOk("commit", "-qam", "Handle null items");
+
+    const push = run("git", ["push", "origin", "feature/stats"]);
+    expect(push.code, push.out).toBe(0); // a heads-up never blocks on its own
+    expect(push.out).toContain("compared with origin/main and 1 teammate branch");
+    expect(push.out).toMatch(/TEAM\s+calc\.js:7\s+heads-up/);
+    expect(push.out).toContain("Mate is also changing average() on branch feature/coupons (not merged yet)");
+    expect(push.out).toContain("1 team heads-up");
   });
 });
 

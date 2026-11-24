@@ -1,8 +1,10 @@
 import { basename } from "node:path";
 import type { ScanRange, ScanReport } from "@preflux/shared";
+import { toIngestPayload } from "@preflux/shared/ingest";
+import { readLink, uploadPush } from "../api/dashboardClient.js";
 import { loadConfig } from "../config.js";
 import { addedLinesForRevisions, addedLinesStaged, type AddedLine } from "../git/diff.js";
-import { repoRoot } from "../git/exec.js";
+import { repoRoot, tryGit } from "../git/exec.js";
 import { parsePrePushInput, readStdin } from "../git/prePushInput.js";
 import { countCommits, revisionsForPushedRef, unpushedRevisions, type RevisionSet } from "../git/range.js";
 import { runConflicts } from "../conflicts/analyze.js";
@@ -25,6 +27,8 @@ export interface ScanOptions {
   stdin?: string;
   /** Override a score-based block (also PREFLUX_FORCE=1). Never overrides secrets. */
   force?: boolean;
+  /** Running as the pull-request check (preflux ci). */
+  ci?: boolean;
 }
 
 const envForce = () => /^(1|true|yes)$/i.test(process.env.PREFLUX_FORCE ?? "");
@@ -46,7 +50,7 @@ export async function runScan(opts: ScanOptions): Promise<ScanReport> {
   const root = repoRoot(opts.cwd ?? process.cwd());
   const config = loadConfig(root);
   const allowlist = loadAllowlist(root, config.secrets.ignorePaths);
-  const mode: ScanReport["mode"] = opts.staged ? "staged" : opts.hook ? "hook" : "manual";
+  const mode: ScanReport["mode"] = opts.staged ? "staged" : opts.hook ? "hook" : opts.ci ? "ci" : "manual";
 
   const t0 = performance.now();
   let added: AddedLine[];
@@ -106,12 +110,37 @@ export async function runScan(opts: ScanOptions): Promise<ScanReport> {
   };
 }
 
+/**
+ * Send the result to the team dashboard, if this repository is linked. Returns a one-line note.
+ * Called for real pushes (hook) and CI only, not for exploratory manual scans.
+ */
+export async function recordPush(
+  report: ScanReport,
+  root: string,
+  extra: { branch?: string; headSha?: string; author?: string } = {},
+  env: NodeJS.ProcessEnv = process.env,
+): Promise<string | null> {
+  const link = readLink(root, env);
+  if (!link) return null;
+  const payload = toIngestPayload(report, {
+    branch: extra.branch ?? tryGit(["rev-parse", "--abbrev-ref", "HEAD"], root)?.trim(),
+    headSha: extra.headSha ?? tryGit(["rev-parse", "HEAD"], root)?.trim(),
+    author: extra.author ?? tryGit(["config", "user.name"], root)?.trim(),
+  });
+  const result = await uploadPush(link, payload);
+  return result.ok ? "dashboard: push recorded" : `dashboard: not recorded (${result.reason})`;
+}
+
 /** CLI wrapper: prints the report and returns the process exit code. */
 export async function scanCommand(opts: ScanOptions): Promise<number> {
   try {
     const report = await runScan(opts);
     if (opts.json) process.stdout.write(`${JSON.stringify(report, null, 2)}\n`);
     else process.stderr.write(`${renderReport(report)}\n`);
+    if (opts.hook) {
+      const note = await recordPush(report, repoRoot(opts.cwd ?? process.cwd()));
+      if (note) process.stderr.write(`${note}\n`);
+    }
     return report.decision === "block" && !report.forced ? 1 : 0;
   } catch (err) {
     process.stderr.write(`preflux: ${(err as Error).message}\n`);

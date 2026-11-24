@@ -24,8 +24,16 @@ export function defaultReply(body: { rows: Row[] }): StubReply {
       model_version: "stub-v1",
       threshold: 0.5,
       rows: body.rows.map((r) => {
-        const probability = Math.min(0.95, (r.features.la ?? 0) / 100);
-        return { id: r.id, probability, level: probability >= 0.5 ? "high" : probability >= 0.3 ? "medium" : "low" };
+        const la = r.features.la ?? 0;
+        const probability = Math.min(0.95, la / 100);
+        return {
+          id: r.id,
+          probability,
+          level: probability >= 0.5 ? "high" : probability >= 0.3 ? "medium" : "low",
+          percentile: Math.round(probability * 100),
+          // Like the real model: lines added is the main driver; tiny changes have only weak reasons.
+          reasons: [{ feature: "la", value: la, impact: la >= 30 ? 0.3 : 0.01 }],
+        };
       }),
     },
   };

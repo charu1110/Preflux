@@ -1,9 +1,10 @@
 import type { Finding, ModuleResult, Severity } from "@preflux/shared";
-import { MAX_ROWS_PER_PUSH, type FeatureRow, type RiskLevel } from "@preflux/shared/ml";
+import { MAX_ROWS_PER_PUSH, type FeatureRow, type PredictResponse, type RiskLevel } from "@preflux/shared/ml";
 import { predict } from "../api/mlClient.js";
 import type { MlConfig } from "../config.js";
 import type { RevisionSet } from "../git/range.js";
 import { extractFeatures } from "./extract.js";
+import { describeReasons } from "./reasons.js";
 
 const LEVEL_SEVERITY: Record<RiskLevel, Severity> = { high: "high", medium: "medium", low: "low" };
 
@@ -52,24 +53,30 @@ export async function runBugRisk(sets: RevisionSet[], root: string, ml: MlConfig
   if (!result.ok) return skipped(result.reason, started);
 
   // Riskiest change per file.
-  const byFile = new Map<string, { row: FeatureRow; probability: number; level: RiskLevel }>();
+  type Scored = PredictResponse["rows"][number] & { row: FeatureRow };
+  const byFile = new Map<string, Scored>();
   for (const p of result.data.rows) {
     const row = rows[Number(p.id.slice(1))];
     if (!row) continue;
     const prev = byFile.get(row.file);
-    if (!prev || p.probability > prev.probability) byFile.set(row.file, { row, probability: p.probability, level: p.level });
+    if (!prev || p.probability > prev.probability) byFile.set(row.file, { ...p, row });
   }
 
   const findings: Finding[] = [...byFile.values()]
     .sort((a, b) => b.probability - a.probability)
-    .map(({ row, probability, level }) => ({
+    .map(({ row, probability, level, percentile, reasons }) => ({
       kind: "bug_risk",
       ruleId: "bug-risk",
       severity: LEVEL_SEVERITY[level],
-      message: `${Math.round(probability * 100)}% estimated chance this change introduces a bug (${level} risk)`,
+      message:
+        typeof percentile === "number"
+          ? `${level} risk: riskier than ${Math.round(percentile)}% of past changes`
+          : `${level} risk: ${Math.round(probability * 100)}% estimated chance of introducing a bug`,
       file: row.file,
       commit: row.commit,
       probability,
+      percentile: typeof percentile === "number" ? percentile : undefined,
+      reasons: describeReasons(reasons),
     }));
 
   return {

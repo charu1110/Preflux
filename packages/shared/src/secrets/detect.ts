@@ -39,6 +39,10 @@ const ENV_VAR_NAME = /^[A-Z][A-Z0-9_]*$/;
 const SECRET_KEYWORD_NEARBY = /key|secret|token|passw|pwd|auth|cred|signature|salt/i;
 const DATA_URI = /;base64,/i;
 const SRI_HASH = /^sha(?:256|384|512)-/;
+// Scheme + host + path of a web link. Real-world testing (express, httpie changelogs) showed long
+// GitHub advisory/issue paths passing the entropy test. The query string is kept, since tokens are
+// usually passed there; credentials in a URL's userinfo or known webhook formats are caught in step 1.
+const URL_PATH = /\bhttps?:\/\/[^\s?#"'`<>()[\]]+/g;
 
 export function isPlaceholder(value: string): boolean {
   return PLACEHOLDER.test(value);
@@ -74,7 +78,7 @@ export function scanLine(text: string, entropy: EntropyConfig = DEFAULT_ENTROPY_
 
   // 3. Unknown formats: high-entropy tokens.
   if (!DATA_URI.test(text)) {
-    for (const token of candidateTokens(text, entropy.minLength)) {
+    for (const token of candidateTokens(text.replace(URL_PATH, " "), entropy.minLength)) {
       if (covered(token) || SRI_HASH.test(token) || isPlaceholder(token)) continue;
       const h = shannonEntropy(token);
       if (charsetOf(token) === "hex") {

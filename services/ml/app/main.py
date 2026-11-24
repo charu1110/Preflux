@@ -41,10 +41,18 @@ class PredictRequest(BaseModel):
     rows: Annotated[list[FeatureRowIn], Field(min_length=1, max_length=MAX_ROWS)]
 
 
+class Reason(BaseModel):
+    feature: str
+    value: float
+    impact: float
+
+
 class RowOut(BaseModel):
     id: str
     probability: float
     level: Literal["low", "medium", "high"]
+    percentile: float | None = None
+    reasons: list[Reason] = []
 
 
 class PredictResponse(BaseModel):
@@ -81,9 +89,20 @@ def predict(req: PredictRequest) -> PredictResponse:
     model = state["model"]
     if model is None:
         raise HTTPException(503, "No trained model found. Run training/train.py to create models/bugrisk.json.")
-    probabilities = model.predict([r.features for r in req.rows])
+    features = [r.features for r in req.rows]
+    probabilities = model.predict(features)
+    reasons = model.reasons(features)
     return PredictResponse(
         model_version=model.version,
         threshold=model.threshold,
-        rows=[RowOut(id=r.id, probability=round(float(p), 6), level=model.level(float(p))) for r, p in zip(req.rows, probabilities)],
+        rows=[
+            RowOut(
+                id=r.id,
+                probability=round(float(p), 6),
+                level=model.level(float(p)),
+                percentile=model.percentile(float(p)),
+                reasons=[Reason(**x) for x in why],
+            )
+            for r, p, why in zip(req.rows, probabilities, reasons)
+        ],
     )

@@ -2,12 +2,13 @@ import type { Finding, ModuleResult } from "@preflux/shared";
 import type { ConflictsConfig } from "../config.js";
 import { readBlobs } from "../git/blobs.js";
 import { git, gitStatus, tryGit } from "../git/exec.js";
-import { findConflicts, type SideFile } from "./compare.js";
+import { findCollisions, findConflicts, type SideFile } from "./compare.js";
 import { languageFor } from "./parser.js";
 import { fileStructure } from "./symbols.js";
 
 // Structural conflict detection against the team's integration branch (e.g. origin/main).
-// Informational and fail-open: any problem means "skipped", never a blocked push.
+// Plus the Collision Radar: the same functions changed on teammates' unmerged branches.
+// Fail-open: any problem means "skipped", never a blocked push.
 
 const MAX_FILES_PER_SIDE = 300;
 
@@ -33,18 +34,71 @@ function resolveBaseBranch(remote: string, cfg: ConflictsConfig, cwd: string): s
   return null;
 }
 
-/** Bring <remote>/<branch> up to date. Returns a note when we have to fall back to the last known state. */
-function fetchBase(remote: string, branch: string, cfg: ConflictsConfig, cwd: string): string | undefined {
+/**
+ * Bring <remote>/<branch> up to date; with the radar on, every branch (pruning deleted ones).
+ * Returns a note when we have to fall back to the last known state.
+ */
+function fetchRemote(remote: string, branch: string, cfg: ConflictsConfig, cwd: string): string | undefined {
   if (!cfg.fetch) return undefined;
+  const args = cfg.radar.enabled
+    ? ["fetch", "--quiet", "--no-tags", "--prune", remote, `+refs/heads/*:refs/remotes/${remote}/*`]
+    : ["fetch", "--quiet", "--no-tags", remote, `+refs/heads/${branch}:refs/remotes/${remote}/${branch}`];
   try {
-    git(["fetch", "--quiet", "--no-tags", remote, `+refs/heads/${branch}:refs/remotes/${remote}/${branch}`], cwd, {
-      timeoutMs: cfg.fetchTimeoutMs,
-      env: { ...process.env, GIT_TERMINAL_PROMPT: "0" },
-    });
+    git(args, cwd, { timeoutMs: cfg.fetchTimeoutMs, env: { ...process.env, GIT_TERMINAL_PROMPT: "0" } });
     return undefined;
   } catch {
-    return `could not fetch ${remote}/${branch}; used the last known state`;
+    return `could not fetch ${remote}; used the last known state`;
   }
+}
+
+const isAncestor = (a: string, b: string, cwd: string) => gitStatus(["merge-base", "--is-ancestor", a, b], cwd).status === 0;
+
+interface TeamBranch {
+  ref: string;
+  /** Short name, e.g. "feature/coupons". */
+  name: string;
+  author: string;
+}
+
+/** Teammates' active, unmerged branches on the remote, newest first. */
+function teamBranches(remote: string, baseBranch: string, ours: string, cfg: ConflictsConfig, cwd: string): TeamBranch[] {
+  const me = (tryGit(["config", "user.email"], cwd) ?? "").trim().toLowerCase();
+  const since = Date.now() / 1000 - cfg.radar.activeDays * 86_400;
+  const prefix = `refs/remotes/${remote}/`;
+  const baseRef = `${prefix}${baseBranch}`;
+  const out = git(["for-each-ref", "--sort=-committerdate", "--format=%(refname)%1f%(committerdate:unix)%1f%(authorname)%1f%(authoremail)", prefix], cwd);
+
+  const branches: TeamBranch[] = [];
+  for (const line of lines(out)) {
+    if (branches.length >= cfg.radar.maxBranches) break;
+    const [ref = "", when = "0", author = "", email = ""] = line.split("\u001f");
+    const name = ref.slice(prefix.length);
+    if (name === "HEAD" || ref === baseRef || Number(when) < since) continue;
+    if (email.replace(/[<>]/g, "").toLowerCase() === me) continue; // your own branches
+    if (isAncestor(ref, ours, cwd) || isAncestor(ref, baseRef, cwd)) continue; // already in your work, or merged
+    branches.push({ ref, name, author });
+  }
+  return branches;
+}
+
+/** Collision Radar for one pushed tip: same functions changed on teammates' branches. */
+async function radarTip(tip: string, branches: TeamBranch[], cwd: string): Promise<Finding[]> {
+  const ours = git(["rev-parse", tip], cwd).trim();
+  const findings: Finding[] = [];
+  for (const b of branches) {
+    const theirs = git(["rev-parse", b.ref], cwd).trim();
+    const base = tryGit(["merge-base", ours, theirs], cwd)?.trim();
+    if (!base) continue;
+    const changed = (to: string) => new Set(lines(git(["diff", "--name-only", "--no-renames", base, to], cwd)).filter((p) => languageFor(p)));
+    const mine = changed(ours);
+    const both = [...changed(theirs)].filter((p) => mine.has(p)).slice(0, MAX_FILES_PER_SIDE);
+    if (both.length === 0) continue; // only parse files you've both touched
+    const specs = [...new Set(both.flatMap((p) => [`${base}:${p}`, `${ours}:${p}`, `${theirs}:${p}`]))];
+    const contents = readBlobs(specs, cwd);
+    const blobs = new Map(specs.map((s, i) => [s, contents[i] ?? null]));
+    findings.push(...findCollisions(await sideFiles(both, base, ours, blobs), await sideFiles(both, base, theirs, blobs), b.author, b.name));
+  }
+  return findings;
 }
 
 /** Files Git would report as text conflicts (git >= 2.38 `merge-tree --write-tree`). */
@@ -79,8 +133,11 @@ async function sideFiles(paths: string[], base: string, tip: string, blobs: Map<
 }
 
 async function analyseTip(tip: string, theirsRef: string, label: string, cwd: string): Promise<Finding[]> {
-  const theirs = git(["rev-parse", theirsRef], cwd).trim();
-  const ours = git(["rev-parse", tip], cwd).trim();
+  return analyseCommits(git(["rev-parse", tip], cwd).trim(), git(["rev-parse", theirsRef], cwd).trim(), label, cwd);
+}
+
+/** What merging `theirs` into `ours` (both commit shas) would produce. Also used by the merge study. */
+export async function analyseCommits(ours: string, theirs: string, label: string, cwd: string): Promise<Finding[]> {
   const base = tryGit(["merge-base", ours, theirs], cwd)?.trim();
   if (!base || base === theirs) return []; // unrelated histories, or nothing new on their side
 
@@ -123,11 +180,11 @@ export async function runConflicts(tips: string[], remote: string, cfg: Conflict
     let branch = resolveBaseBranch(remote, cfg, cwd);
     let note: string | undefined;
     if (branch) {
-      note = fetchBase(remote, branch, cfg, cwd);
+      note = fetchRemote(remote, branch, cfg, cwd);
     } else if (cfg.fetch) {
       // Fresh clone without remote-tracking refs yet: try the usual names.
       for (const candidate of ["main", "master"]) {
-        if (!fetchBase(remote, candidate, cfg, cwd)) {
+        if (!fetchRemote(remote, candidate, cfg, cwd) && refExists(`refs/remotes/${remote}/${candidate}`, cwd)) {
           branch = candidate;
           break;
         }
@@ -139,16 +196,29 @@ export async function runConflicts(tips: string[], remote: string, cfg: Conflict
     const label = `${remote}/${branch}`;
     const findings: Finding[] = [];
     const seen = new Set<string>();
+    const keep = (f: Finding) => {
+      const key = `${f.ruleId}\0${f.file}\0${f.line}\0${f.message}`;
+      if (!seen.has(key)) {
+        seen.add(key);
+        findings.push(f);
+      }
+    };
+    let radarCount = 0;
     for (const tip of [...new Set(tips)]) {
-      for (const f of await analyseTip(tip, theirsRef, label, cwd)) {
-        const key = `${f.ruleId}\0${f.file}\0${f.line}\0${f.message}`;
-        if (!seen.has(key)) {
-          seen.add(key);
-          findings.push(f);
-        }
+      const vsMain = await analyseTip(tip, theirsRef, label, cwd);
+      vsMain.forEach(keep);
+      if (cfg.radar.enabled) {
+        const branches = teamBranches(remote, branch, git(["rev-parse", tip], cwd).trim(), cfg, cwd);
+        radarCount = Math.max(radarCount, branches.length);
+        // A teammate's branch often contains work already merged to main: don't warn twice about it.
+        const known = new Set(vsMain.map((f) => `${f.file}\0${f.line}`));
+        for (const f of await radarTip(tip, branches, cwd)) if (!known.has(`${f.file}\0${f.line}`)) keep(f);
       }
     }
-    return done(findings, "ok", [`compared with ${label}`, note].filter(Boolean).join("; "));
+    const compared = cfg.radar.enabled
+      ? `compared with ${label} and ${radarCount} teammate branch${radarCount === 1 ? "" : "es"}`
+      : `compared with ${label}`;
+    return done(findings, "ok", [compared, note].filter(Boolean).join("; "));
   } catch (err) {
     return done([], "skipped", `could not analyse: ${(err as Error).message.split("\n")[0]}`);
   }

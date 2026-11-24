@@ -112,6 +112,30 @@ function callersOf(c: SymbolChange, calls: AddedCall[]): AddedCall[] {
   return calls.filter((call) => call.name === name && (c.symbol.kind !== "method" || call.file === c.file));
 }
 
+/**
+ * Collision Radar: the same function/class is being changed on a teammate's unmerged branch.
+ * Not a conflict yet (their work may never land), so it's a low-severity heads-up.
+ */
+export function findCollisions(ours: SideFile[], theirs: SideFile[], who: string, branch: string): Finding[] {
+  const theirsByKey = new Map(theirs.flatMap(symbolChanges).map((c) => [`${c.file}\0${c.name}`, c]));
+  const findings: Finding[] = [];
+  for (const o of ours.flatMap(symbolChanges)) {
+    const t = theirsByKey.get(`${o.file}\0${o.name}`);
+    if (!t || o.kind === "added" || t.kind === "added") continue;
+    if (isEdit(o) && isEdit(t) && o.symbol.body === t.symbol.body && o.symbol.params === t.symbol.params) continue; // same edit
+    const what = isRemoval(t) ? apiChange(t) : `is also changing ${display(o.symbol)}`;
+    findings.push({
+      kind: "conflict",
+      ruleId: "collision-branch",
+      severity: "low",
+      file: o.file,
+      line: o.symbol.startLine,
+      message: `${who} ${what} on branch ${branch} (not merged yet). Agree on who changes what before you both merge.`,
+    });
+  }
+  return findings;
+}
+
 export function findConflicts(ours: SideFile[], theirs: SideFile[], ctx: CompareContext): Finding[] {
   const oursChanges = ours.flatMap(symbolChanges);
   const theirsChanges = theirs.flatMap(symbolChanges);

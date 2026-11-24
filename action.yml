@@ -1,0 +1,52 @@
+name: Preflux
+description: Pull-request check for leaked secrets, risky changes and team conflicts, with one Push Safety Score.
+author: Charu, Bhumi, Aditi Kaushal (GNDEC)
+branding:
+  icon: shield
+  color: purple
+
+inputs:
+  ml-url:
+    description: URL of a Preflux ML service for bug-risk prediction (optional; without it bug risk shows "skipped").
+    required: false
+    default: ""
+  dashboard-url:
+    description: Preflux dashboard address, to record each PR on the team dashboard (optional).
+    required: false
+    default: ""
+  dashboard-token:
+    description: Project token from the dashboard (store it as a repository secret).
+    required: false
+    default: ""
+  force:
+    description: Set to "true" to let a score-blocked PR pass once (recorded). Never overrides secrets.
+    required: false
+    default: "false"
+  github-token:
+    description: Token used to post the PR comment.
+    required: false
+    default: ${{ github.token }}
+
+runs:
+  using: composite
+  steps:
+    - uses: actions/setup-node@v4
+      with:
+        node-version: 20
+
+    - name: Build Preflux
+      shell: bash
+      working-directory: ${{ github.action_path }}
+      run: |
+        npm ci --workspace preflux --no-audit --no-fund
+        npm run build --workspace preflux
+
+    - name: Run Preflux
+      shell: bash
+      run: node "${{ github.action_path }}/packages/cli/dist/index.js" ci
+      env:
+        GITHUB_TOKEN: ${{ inputs.github-token }}
+        PREFLUX_ML_URL: ${{ inputs.ml-url }}
+        PREFLUX_FORCE: ${{ inputs.force }}
+        PREFLUX_DASHBOARD_URL: ${{ inputs.dashboard-url }}
+        PREFLUX_TOKEN: ${{ inputs.dashboard-token }}

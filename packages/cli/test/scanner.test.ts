@@ -85,7 +85,14 @@ describe("false positives", () => {
     `aws_access_key_id = AKIAIOSFODNN7EXAMPLE`,
     `export const DEFAULT_TIMEOUT_MS = 30_000;`,
     `const ALPHABET = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789";`,
+    // Real changelog lines from express and httpie that used to be flagged.
+    "* fixes [GHSA-v422-hmwv-36x6](https://github.com/expressjs/body-parser/security/advisories/GHSA-v422-hmwv-36x6)",
+    "- Fixed the [vulnerability](https://github.com/httpie/cli/security/advisories/GHSA-9w4w-cpc8-h2fq) on redirects.",
   ];
+
+  it("still checks tokens passed in a URL's query string", () => {
+    expect(rules(`fetch("https://api.internal.dev/v1/data?access=${fake.highEntropy()}")`)).toEqual(["high-entropy-base64"]);
+  });
 
   it.each(benign)("ignores: %s", (line) => {
     expect(rules(line)).toEqual([]);

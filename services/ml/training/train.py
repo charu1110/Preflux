@@ -15,6 +15,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
+import numpy as np
 import pandas as pd
 
 ML_ROOT = Path(__file__).resolve().parents[1]
@@ -50,6 +51,10 @@ def train_and_save(df: pd.DataFrame, out_dir: Path) -> dict[str, Any]:
     x_te, y_te = xy(split.test, features)
     test_metrics = classification_metrics(y_te, apply_calibration(model.predict_proba(x_te)[:, 1], calibration), threshold)
 
+    # Distribution of risk over the training changes, so the API can say "riskier than 92% of past changes".
+    x_tr, _ = xy(split.train, features)
+    training_quantiles = np.quantile(apply_calibration(model.predict_proba(x_tr)[:, 1], calibration), np.linspace(0, 1, 101))
+
     trained_at = datetime.now(timezone.utc)
     metadata = {
         "model_version": f"bugrisk-v{spec.version}-{trained_at:%Y%m%d}",
@@ -58,6 +63,7 @@ def train_and_save(df: pd.DataFrame, out_dir: Path) -> dict[str, Any]:
         "calibration": calibration,
         "threshold": threshold,
         "levels": risk_levels(threshold, float(split.train["buggy"].mean())),
+        "training_quantiles": [round(float(q), 6) for q in training_quantiles],
         "trained_at": trained_at.isoformat(timespec="seconds"),
         "best_iteration": int(model.best_iteration),
         "params": {k: v for k, v in XGB_PARAMS.items() if k != "eval_metric"},

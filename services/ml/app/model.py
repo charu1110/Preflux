@@ -47,6 +47,28 @@ class BugRiskModel:
         """Calibrated probabilities (see training/model_lib.py: fit_platt)."""
         return calibrate(self.booster.inplace_predict(x), self.metadata.get("calibration"))
 
+    def percentile(self, probability: float) -> float | None:
+        """Share of training changes (0-100) that the model rated as less risky than this one."""
+        quantiles = self.metadata.get("training_quantiles")
+        if not quantiles:
+            return None
+        return round(100 * float(np.searchsorted(quantiles, probability, side="right") - 1) / (len(quantiles) - 1), 1)
+
+    def reasons(self, rows: list[dict[str, float]], top: int = 3) -> list[list[dict[str, float | str]]]:
+        """The features that pushed each prediction *up* the most (XGBoost SHAP contributions).
+
+        This is how the model answers "why is this change risky?": for each row, the per-feature
+        contributions plus a bias add up to the model's raw score, so the largest positive ones
+        are the real drivers of that particular prediction.
+        """
+        x = np.array([[row[name] for name in self.feature_order] for row in rows], dtype=np.float32)
+        contribs = self.booster.predict(xgb.DMatrix(x), pred_contribs=True)[:, :-1]  # last column = bias
+        out = []
+        for row, values in zip(rows, contribs):
+            ranked = sorted(((float(v), name) for name, v in zip(self.feature_order, values) if v > 0), reverse=True)
+            out.append([{"feature": name, "value": float(row[name]), "impact": round(v, 4)} for v, name in ranked[:top]])
+        return out
+
 
 def calibrate(raw: np.ndarray, calibration: dict[str, float] | None) -> np.ndarray:
     """Platt scaling: sigmoid(a * logit(raw) + b). Identity when the model has no calibration."""

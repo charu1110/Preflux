@@ -1,7 +1,8 @@
 import { defineConfig } from "tsup";
 
 export default defineConfig({
-  entry: ["src/index.ts"],
+  // merge-study is a research script (docs/merge-study.md), not part of the CLI commands.
+  entry: { index: "src/index.ts", "merge-study": "scripts/merge-study.ts" },
   format: ["esm"],
   target: "node20",
   platform: "node",

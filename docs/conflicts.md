@@ -60,6 +60,23 @@ Messages name the teammate's commit, for example *"(51eb2c9 by Teammate)"*, so y
 | `packages/cli/test/conflicts.test.ts` | Rule tests on JS/TS/Python snippets |
 | `packages/cli/test/e2e.test.ts` | Two developers, a real remote, a real `git push` |
 
+## Collision Radar (teammates' unmerged branches)
+
+Conflicts with `main` only show up once a teammate has merged. The radar warns **earlier**: it also compares your work with every teammate's **active, unmerged branch** on the remote.
+
+```
+TEAM  calc.js:7  heads-up
+      Mate is also changing average() on branch feature/coupons (not merged yet).
+      Agree on who changes what before you both merge.
+```
+
+- **Which branches count:** remote branches with a commit in the last `activeDays` (30) days, newest first, at most `maxBranches` (15). Your own branches (same email), branches already merged into the base, and branches already contained in your work are skipped.
+- **How it compares:** only files that both you and the teammate changed are parsed, so it stays fast. A function edited, removed or renamed on both sides gives one heads-up. A function that's already flagged against the base branch isn't flagged twice.
+- **Weight:** severity *low*, 0.25 in the conflict score. A single heads-up never blocks a push, because their work may never land.
+- **Config:** `"conflicts": { "radar": { "enabled": true, "activeDays": 30, "maxBranches": 15 } }`
+
+**Evidence that it matters:** in 1,676 real merges of six well-known projects, 22.6% of the merges where both branches touched the same code file had **both branches editing the same function, with no conflict reported by Git**. See `docs/merge-study.md`. The same study did *not* show such merges leading to more bug fixes, so the radar is presented as a coordination signal, not a bug prediction.
+
 ## Known limits
 
 - Name-based call matching can still miss calls (dynamic dispatch, aliases) or, rarely, match an unrelated function with the same name.

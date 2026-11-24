@@ -21,6 +21,9 @@ See [docs/architecture.md](docs/architecture.md) for the full design and build p
 | `docs` | architecture, features, scoring, API |
 
 ## Getting started
+**New to the project? Follow [docs/TEAM_SETUP.md](docs/TEAM_SETUP.md)**: step-by-step setup and testing on Windows.
+
+Quick version:
 ```bash
 npm install
 cp apps/web/.env.example apps/web/.env.local   # fill in Supabase values

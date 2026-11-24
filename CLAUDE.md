@@ -74,8 +74,15 @@ ML service (run from `services/ml`, see `services/ml/README.md`):
 - Tree-sitter comes from `@vscode/tree-sitter-wasm` (prebuilt WASM, no node-gyp). Never switch to the native `tree-sitter-*` grammar packages: they need C++ build tools on Windows.
 - Syntax trees live in WASM memory: always go through `withSyntaxTree()` (`conflicts/parser.ts`), which frees them.
 - Conflicts feed the Push Safety Score (high = 1.0, medium = 0.5) and are fail-open, like bug risk. A failed fetch falls back to the last known `<remote>/<base>`.
+- Collision Radar findings (`collision-branch`) are low severity (0.25 each), skip your own and merged branches, and skip functions already flagged against the base branch.
+- Bug-risk output must always explain itself: percentile + plain-English reasons (`packages/cli/src/features/reasons.ts`, from the model's SHAP contributions). Never show a bare probability.
 - Score rules: secrets always block (score 0, can't be forced). Otherwise ≥70 allow, 40–69 warn, <40 block, and `PREFLUX_FORCE=1` overrides a score block (recorded as `forced`).
 - New rules go in `conflicts/compare.ts` (pure) with a snippet test in `test/conflicts.test.ts`.
+
+## Dashboard rules
+- No service-role key anywhere. All writes go through RLS or the security-definer functions in `supabase/migrations/0001_preflux.sql`. CLI uploads go through `/api/ingest` → `ingest_push()`, using a hashed per-project token.
+- The upload payload (`packages/shared/src/ingest.ts`) must never include snippets, fingerprints, code or commit messages.
+- Next.js 16 uses `proxy.ts` (not `middleware.ts`) for the session refresh and the /dashboard redirect.
 
 ## Windows TLS note
 This machine intercepts HTTPS (antivirus/proxy root CA). Don't disable verification. Use the Windows certificate store instead:
@@ -104,6 +111,6 @@ This machine intercepts HTTPS (antivirus/proxy root CA). Don't disable verificat
 - [x] Phase 1: Secret detection + CLI (`init`, `scan`) + husky pre-push hook. See `packages/cli/README.md`
 - [x] Phase 2: Bug-risk ML (dataset mining, SZZ, XGBoost, FastAPI /predict, CLI feature extraction + parity test). Results: `docs/ml-evaluation.md`
 - [x] Phase 3: Tree-sitter structural conflict detection. See `docs/conflicts.md`
-- [ ] Phase 4: ~~Scoring~~ (done: `docs/scoring.md`), redaction, LLM explanation layer (mock provider)
-- [ ] Phase 5: Supabase schema + RLS, auth, dashboard pages, /api/ingest, `preflux link`
-- [ ] Phase 6: E2E tests, tuning, comparison vs Gitleaks/TruffleHog, deployment, docs
+- [x] Phase 4: Push Safety Score (`docs/scoring.md`) + explainable bug risk (SHAP reasons + percentile). LLM explanations: not built, needs a provider decision
+- [x] Phase 5: dashboard (`docs/dashboard.md`), Collision Radar (`docs/conflicts.md`), GitHub PR bot (`docs/github-action.md`), merge study (`docs/merge-study.md`)
+- [ ] Phase 6: apply the DB migration + deploy (Vercel, Render, npm), first real GitHub Action run, comparison vs Gitleaks/TruffleHog (needs approval to download them), student-team trial

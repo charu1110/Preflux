@@ -34,14 +34,24 @@ const RISK_COLOR: Partial<Record<Severity, (s: string) => string>> = {
 };
 
 function formatRisk(f: Finding): string {
-  const pct = `${Math.round((f.probability ?? 0) * 100)}%`.padStart(4);
   const level = (f.severity === "high" ? "HIGH" : f.severity === "medium" ? "MED " : "LOW ").padEnd(4);
   const color = RISK_COLOR[f.severity] ?? chalk.gray;
-  return `     ${color(`${pct} ${level}`)}  ${chalk.cyan(f.file)}`;
+  // Prefer "riskier than X% of past changes": easier to read than a raw probability.
+  const how =
+    f.percentile !== undefined
+      ? `riskier than ${Math.round(f.percentile)}% of past changes`
+      : `${Math.round((f.probability ?? 0) * 100)}% chance of a bug`;
+  const lines = [`     ${color(level)}  ${chalk.cyan(f.file)}  ${chalk.gray(how)}`];
+  if (f.reasons && f.reasons.length > 0) lines.push(chalk.gray(`           why: ${f.reasons.join(" · ")}`));
+  else if (f.severity !== "low") lines.push(chalk.gray("           why: several small factors together"));
+  return lines.join("\n");
 }
+
+const isRadar = (f: Finding) => f.ruleId === "collision-branch";
 
 function formatConflict(f: Finding): string {
   const where = `${f.file}${f.line ? `:${f.line}` : ""}`;
+  if (isRadar(f)) return [`     ${chalk.cyan("TEAM")}  ${chalk.cyan(where)}  ${chalk.gray("heads-up")}`, `           ${f.message}`].join("\n");
   const color = RISK_COLOR[f.severity] ?? chalk.gray;
   const level = (f.severity === "high" ? "HIGH" : f.severity === "medium" ? "MED " : "LOW ").padEnd(4);
   return [`     ${color(level)}  ${chalk.cyan(where)}  ${chalk.gray(f.ruleId.replace(/^conflict-/, ""))}`, `           ${f.message}`].join("\n");
@@ -58,14 +68,22 @@ function formatScore(report: ScanReport): string {
 }
 
 /** One-line reasons behind a warning or a score-based block. */
+/** `git pull --rebase <remote> <branch>` for the base branch the conflict check actually used (e.g. origin master). */
+export function pullCommand(report: ScanReport): string {
+  const m = /compared with ([^/\s]+)\/([^\s;]+)/.exec(report.modules.conflicts?.reason ?? "");
+  return `git pull --rebase ${m ? `${m[1]} ${m[2]}` : "origin main"}`;
+}
+
 function highlights(report: ScanReport): string[] {
   const out: string[] = [];
   const high = report.findings.filter((f) => f.kind === "bug_risk" && f.severity === "high").length;
   if (high > 0) out.push(`${high} high bug-risk file${high === 1 ? "" : "s"}: worth an extra review or a test before merging.`);
-  const conflicts = report.findings.filter((f) => f.kind === "conflict").length;
+  const conflicts = report.findings.filter((f) => f.kind === "conflict" && !isRadar(f)).length;
   if (conflicts > 0) {
     out.push(`${conflicts} possible merge conflict${conflicts === 1 ? "" : "s"} with the base branch: coordinate with your teammates before merging.`);
   }
+  const radar = report.findings.filter(isRadar).length;
+  if (radar > 0) out.push(`${radar} team heads-up${radar === 1 ? "" : "s"}: teammates are changing the same code on unmerged branches.`);
   return out;
 }
 
@@ -133,7 +151,7 @@ export function renderReport(report: ScanReport): string {
       "",
       chalk.bold("  How to fix:"),
       ...highlights(report).map((h) => `   • ${h}`),
-      "   • Bring in your team's latest work and resolve the clashes first, e.g.  git pull --rebase origin main",
+      `   • Bring in your team's latest work and resolve the clashes first, e.g.  ${pullCommand(report)}`,
       "   • Split very large changes into smaller commits, and add tests for the risky files.",
       "",
       chalk.bold("  Sure it's fine?"),

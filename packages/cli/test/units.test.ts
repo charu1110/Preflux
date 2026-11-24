@@ -6,6 +6,8 @@ import { describe, expect, it } from "vitest";
 import { parseUnifiedDiff } from "../src/git/diff.js";
 import { parsePrePushInput } from "../src/git/prePushInput.js";
 import { globToRegExp, loadAllowlist } from "../src/secrets/allowlist.js";
+import { pullCommand } from "../src/report/terminal.js";
+import type { ScanReport } from "@preflux/shared";
 
 describe("shannonEntropy", () => {
   it("matches known values", () => {
@@ -97,5 +99,19 @@ describe("allowlist", () => {
     expect(allow.isPathIgnored("yarn.lock")).toBe(true); // built-in
     expect(allow.isPathIgnored("src/app.ts")).toBe(false);
     expect(allow.isFingerprintAllowed("0123456789abcdef")).toBe(true);
+  });
+});
+
+describe("pullCommand", () => {
+  const withReason = (reason?: string) =>
+    ({ modules: { conflicts: { status: "ok", reason, durationMs: 1 } } }) as unknown as ScanReport;
+
+  it("suggests pulling the base branch the conflict check used", () => {
+    expect(pullCommand(withReason("compared with origin/master and 2 teammate branches"))).toBe("git pull --rebase origin master");
+    expect(pullCommand(withReason("compared with upstream/release/2.x; using last known state"))).toBe("git pull --rebase upstream release/2.x");
+  });
+
+  it("falls back to origin main when the base is unknown", () => {
+    expect(pullCommand(withReason(undefined))).toBe("git pull --rebase origin main");
   });
 });

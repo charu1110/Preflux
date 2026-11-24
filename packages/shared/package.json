@@ -9,6 +9,7 @@
   "exports": {
     ".": "./src/index.ts",
     "./secrets": "./src/secrets/index.ts",
-    "./ml": "./src/ml/index.ts"
+    "./ml": "./src/ml/index.ts",
+    "./ingest": "./src/ingest.ts"
   }
 }

@@ -22,6 +22,14 @@ export interface ConflictsConfig {
   /** Fetch the base branch before comparing (inside the hook). Falls back to the last known state on failure. */
   fetch: boolean;
   fetchTimeoutMs: number;
+  /** Collision Radar: also compare with teammates' active, unmerged branches. */
+  radar: {
+    enabled: boolean;
+    /** Only branches with a commit in the last N days count as active work. */
+    activeDays: number;
+    /** Newest first; caps the work done inside the hook. */
+    maxBranches: number;
+  };
 }
 
 export interface MlConfig {
@@ -42,7 +50,13 @@ export const DEFAULT_CONFIG: PrefluxConfig = {
   },
   score: DEFAULT_SCORE_CONFIG,
   ml: { enabled: true, url: "http://127.0.0.1:8000", timeoutMs: 5000 },
-  conflicts: { enabled: true, baseBranch: "auto", fetch: true, fetchTimeoutMs: 15000 },
+  conflicts: {
+    enabled: true,
+    baseBranch: "auto",
+    fetch: true,
+    fetchTimeoutMs: 15000,
+    radar: { enabled: true, activeDays: 30, maxBranches: 15 },
+  },
 };
 
 type DeepPartial<T> = { [K in keyof T]?: T[K] extends object ? DeepPartial<T[K]> : T[K] };
@@ -72,6 +86,10 @@ function readConfigFile(root: string): PrefluxConfig {
       thresholds: { ...DEFAULT_CONFIG.score.thresholds, ...user.score?.thresholds },
     },
     ml: { ...DEFAULT_CONFIG.ml, ...user.ml },
-    conflicts: { ...DEFAULT_CONFIG.conflicts, ...user.conflicts },
+    conflicts: {
+      ...DEFAULT_CONFIG.conflicts,
+      ...user.conflicts,
+      radar: { ...DEFAULT_CONFIG.conflicts.radar, ...user.conflicts?.radar },
+    },
   };
 }

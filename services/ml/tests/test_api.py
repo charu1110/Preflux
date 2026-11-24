@@ -33,6 +33,16 @@ def test_predict_returns_rows_in_order(client):
     assert body["rows"][1]["probability"] > body["rows"][0]["probability"]
 
 
+def test_predict_explains_each_prediction(client):
+    body = client.post("/predict", json={"rows": [row(1, la=390, prior_fixes=9)]}).json()
+    risky = body["rows"][0]
+    assert 0 <= risky["percentile"] <= 100
+    # The synthetic data makes buggy changes depend on la and prior_fixes: those must be the reasons.
+    assert {r["feature"] for r in risky["reasons"]} & {"la", "prior_fixes"}
+    assert all(r["impact"] > 0 for r in risky["reasons"]) and len(risky["reasons"]) <= 3
+    assert risky["reasons"][0]["value"] in (390.0, 9.0)
+
+
 @pytest.mark.parametrize(
     "payload",
     [
