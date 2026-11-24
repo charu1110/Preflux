@@ -34,7 +34,8 @@ export default async function ProjectPage({ params }: { params: Promise<{ id: st
     data: { user },
   } = await supabase.auth.getUser();
 
-  const { data: project } = await supabase.from("projects").select("id, name, repo_url, owner_id").eq("id", id).maybeSingle();
+  const { data: project, error: projectError } = await supabase.from("projects").select("id, name, repo_url, owner_id").eq("id", id).maybeSingle();
+  if (projectError) throw new Error(`Could not load the project: ${projectError.message}`);
   if (!project) notFound();
   const isOwner = project.owner_id === user?.id;
 
@@ -73,7 +74,15 @@ export default async function ProjectPage({ params }: { params: Promise<{ id: st
     riskyFiles.set(f.file, r);
   }
   const topRisky = [...riskyFiles.values()].sort((a, b) => b.times - a.times || b.worst - a.worst).slice(0, 6);
-  const conflicts = findings.filter((f) => f.kind === "conflict").slice(0, 8);
+  // The same clash is reported again on every push until it is resolved: show it once, newest first.
+  const conflictMap = new Map<string, FindingRow & { times: number }>();
+  for (const f of findings.filter((x) => x.kind === "conflict")) {
+    const key = `${f.rule_id}\0${f.file}\0${f.message}`;
+    const seen = conflictMap.get(key);
+    if (seen) seen.times++;
+    else conflictMap.set(key, { ...f, times: 1 });
+  }
+  const conflicts = [...conflictMap.values()].slice(0, 8);
   const trend = pushes.slice(0, 30).reverse();
 
   return (
@@ -140,14 +149,19 @@ export default async function ProjectPage({ params }: { params: Promise<{ id: st
             <Empty>No conflicts with teammates&apos; work so far.</Empty>
           ) : (
             <ul className="flex flex-col gap-3 text-sm">
-              {conflicts.map((c, i) => (
-                <li key={i}>
+              {conflicts.map((c) => (
+                <li key={`${c.rule_id}|${c.file}|${c.message}`}>
                   <div className="flex items-center gap-2">
                     <SeverityTag severity={c.severity} label={c.rule_id === "collision-branch" ? "team" : c.severity} />
                     <code className="truncate font-mono">{c.file}{c.line ? `:${c.line}` : ""}</code>
                   </div>
                   <p className="mt-0.5 text-zinc-600 dark:text-zinc-400">{c.message}</p>
-                  {c.push_events && <p className="text-xs text-zinc-500">{c.push_events.author} · {c.push_events.branch} · {timeAgo(c.push_events.created_at)}</p>}
+                  {c.push_events && (
+                    <p className="text-xs text-zinc-500">
+                      {c.push_events.author} · {c.push_events.branch} · {timeAgo(c.push_events.created_at)}
+                      {c.times > 1 && ` · seen in ${c.times} pushes`}
+                    </p>
+                  )}
                 </li>
               ))}
             </ul>

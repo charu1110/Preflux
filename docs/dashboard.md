@@ -15,7 +15,7 @@ The dashboard (`apps/web`, Next.js + Supabase) shows every push Preflux checks, 
 ## Setup (once)
 
 1. **Supabase project.** In the Supabase dashboard, create a project, or **restore** a paused one (free projects pause after inactivity).
-2. **Database.** Open **SQL Editor → New query**, paste `supabase/migrations/0001_preflux.sql`, and click **Run**.
+2. **Database.** Open **SQL Editor → New query**, paste `supabase/migrations/0001_preflux.sql`, and click **Run**. Do the same, in order, for `0002_ai_explanations.sql` and `0003_fix_project_owner_read.sql`.
 3. **Environment.** In `apps/web/.env.local`, and in Vercel → Settings → Environment Variables, set:
    ```
    NEXT_PUBLIC_SUPABASE_URL=https://<project-ref>.supabase.co

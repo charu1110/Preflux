@@ -35,7 +35,7 @@ Why it matters
 What to do next
 
 Use simple words for a student developer. Use "- " bullets where helpful. No markdown headings, no bold, no code blocks.
-Mention files and functions by name. For secrets, say the key must be treated as leaked and rotated, and removed from every commit.
+Mention files and functions by name. Refer to teammates by name only. Never write he, she, his or her for a teammate: their names don't tell you their pronouns. If you need a pronoun, use "they". For secrets, say the key must be treated as leaked and rotated, and removed from every commit.
 Keep the whole answer under 180 words.`;
 
 function clip(text: string): string {
