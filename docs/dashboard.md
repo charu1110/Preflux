@@ -36,6 +36,18 @@ The dashboard (`apps/web`, Next.js + Supabase) shows every push Preflux checks, 
 
 Teammates sign up with their own email. The project owner adds them under **Team**.
 
+## AI explanations ("Explain with AI")
+
+Each push page has an **Explain with AI** button. Claude writes a short, plain-English summary: *what happened, why it matters, what to do next*.
+
+- **Setup (once):** run `supabase/migrations/0002_ai_explanations.sql` after `0001`, and put `ANTHROPIC_API_KEY=…` in `apps/web/.env.local` on the machine (or Vercel project) that runs the dashboard.
+- **Who can use it:** every member of the project, through the dashboard. Only the server holds the key; teammates never need it.
+- **What is sent to Claude:** the push's decision, score and branch, and each finding's rule, severity, file, line, message and reasons. Never code, secret values, snippets or fingerprints (the database doesn't have them).
+- **Cost:** each push is explained at most once; the text is stored and reused. Model `claude-opus-5-5` at low effort, change it with `PREFLUX_AI_MODEL`.
+- **The AI never decides.** Preflux's allow/warn/block is computed by code; the AI only explains it. Without a key, the page shows "not set up" and everything else works.
+
+Code: `packages/shared/src/explain.ts` (what is sent, tested in `packages/cli/test/explain.test.ts`), `apps/web/lib/ai/explain.ts` (the Claude call), `apps/web/app/dashboard/actions.ts` (`explainPushAction`).
+
 ## What is uploaded, and what isn't
 
 Uploaded: branch, short commit id, author name, score, decision, and per finding its kind, rule, severity, file, line, message and reasons.

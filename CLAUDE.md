@@ -28,7 +28,7 @@ The results are combined into a **Push Safety Score** (allow / warn / block). An
 | ML/AI service (`services/ml`) | Python 3.10+, FastAPI, XGBoost, PyDriller, pandas, scikit-learn, pytest |
 | Dashboard (`apps/web`) | Next.js (App Router) + Tailwind, `@supabase/supabase-js` (+ `@supabase/ssr` for auth later) |
 | Database/Auth | Supabase Postgres with RLS (migrations in `supabase/migrations`) |
-| LLM | Pluggable provider interface (`services/ml/app/llm`); the default is `mock`, and the real provider is still TBD |
+| LLM | Claude via `@anthropic-ai/sdk`, server-side in the dashboard (`apps/web/lib/ai/explain.ts`, default `claude-opus-5-5`, low effort, server-side fallback). Prompt built in `packages/shared/src/explain.ts`; one stored explanation per push (`0002_ai_explanations.sql`) |
 | Deploy | Vercel (web), Render (ML), Supabase (DB), npm (CLI) |
 
 `apps/web` uses a new Next.js major version. Read `apps/web/AGENTS.md` and the docs in `node_modules/next/dist/docs/` before writing Next.js code.
@@ -96,8 +96,8 @@ This machine intercepts HTTPS (antivirus/proxy root CA). Don't disable verificat
 - Dogfood check: stage the repo into a temporary `GIT_INDEX_FILE`, then run `node packages/cli/dist/index.js scan --staged`. It should report 0 findings.
 
 ## Environment
-- `apps/web/.env.local`: `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY`, `SUPABASE_SERVICE_ROLE_KEY`
-- `services/ml`: `PREFLUX_MODEL_DIR` (default `models/`), `PREFLUX_FEATURE_SPEC`, `PREFLUX_LLM_PROVIDER` (Phase 4, default `mock`)
+- `apps/web/.env.local`: `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY`; optional `ANTHROPIC_API_KEY` (server-only, AI explanations) and `PREFLUX_AI_MODEL`. No service-role key.
+- `services/ml`: `PREFLUX_MODEL_DIR` (default `models/`), `PREFLUX_FEATURE_SPEC`
 - CLI: `PREFLUX_ML_URL` (default `http://127.0.0.1:8000`)
 
 ## Conventions
@@ -111,6 +111,6 @@ This machine intercepts HTTPS (antivirus/proxy root CA). Don't disable verificat
 - [x] Phase 1: Secret detection + CLI (`init`, `scan`) + husky pre-push hook. See `packages/cli/README.md`
 - [x] Phase 2: Bug-risk ML (dataset mining, SZZ, XGBoost, FastAPI /predict, CLI feature extraction + parity test). Results: `docs/ml-evaluation.md`
 - [x] Phase 3: Tree-sitter structural conflict detection. See `docs/conflicts.md`
-- [x] Phase 4: Push Safety Score (`docs/scoring.md`) + explainable bug risk (SHAP reasons + percentile). LLM explanations: not built, needs a provider decision
+- [x] Phase 4: Push Safety Score (`docs/scoring.md`) + explainable bug risk (SHAP reasons + percentile). LLM explanations: built 2026-11-24 with Claude on the dashboard push page ("Explain with AI")
 - [x] Phase 5: dashboard (`docs/dashboard.md`), Collision Radar (`docs/conflicts.md`), GitHub PR bot (`docs/github-action.md`), merge study (`docs/merge-study.md`)
 - [ ] Phase 6: apply the DB migration + deploy (Vercel, Render, npm), first real GitHub Action run, comparison vs Gitleaks/TruffleHog (needs approval to download them), student-team trial

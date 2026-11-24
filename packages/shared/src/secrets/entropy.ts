@@ -26,9 +26,13 @@ const TOKEN = /[A-Za-z0-9+/=_-]+/g;
 export function candidateTokens(text: string, minLength: number): string[] {
   const tokens: string[] = [];
   for (const m of text.matchAll(TOKEN)) {
-    // Trim leading/trailing separators and padding so "abc==" and "abc" measure the same.
-    const token = m[0].replace(/^[-_/+=]+|[-_/+=]+$/g, "");
-    if (token.length >= minLength) tokens.push(token);
+    // In base64, "=" is only end padding. An "=" in the middle separates a name from its value
+    // (NAME=value in .env files and query strings), so measure each side on its own.
+    for (const part of m[0].split(/=+(?=[^=])/)) {
+      // Trim leading/trailing separators and padding so "abc==" and "abc" measure the same.
+      const token = part.replace(/^[-_/+=]+|[-_/+=]+$/g, "");
+      if (token.length >= minLength) tokens.push(token);
+    }
   }
   return tokens;
 }

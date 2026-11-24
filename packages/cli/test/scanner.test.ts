@@ -90,6 +90,11 @@ describe("false positives", () => {
     "- Fixed the [vulnerability](https://github.com/httpie/cli/security/advisories/GHSA-9w4w-cpc8-h2fq) on redirects.",
   ];
 
+  it("measures the value of NAME=value on its own", () => {
+    expect(rules("# PREFLUX_AI_MODEL=claude-opus-5-5")).toEqual([]);
+    expect(rules(`UPLOAD_SIGNING=${fake.highEntropy()}`)).toEqual(["high-entropy-base64"]);
+  });
+
   it("still checks tokens passed in a URL's query string", () => {
     expect(rules(`fetch("https://api.internal.dev/v1/data?access=${fake.highEntropy()}")`)).toEqual(["high-entropy-base64"]);
   });

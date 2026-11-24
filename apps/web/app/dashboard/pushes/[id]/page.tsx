@@ -1,7 +1,9 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
+import { aiConfigured } from "@/lib/ai/explain";
 import { createUserClient } from "@/lib/supabase/server";
 import { Card, DecisionPill, Empty, ScoreBadge, SeverityTag, timeAgo, type Decision } from "../../_components/ui";
+import ExplainPanel from "./ExplainPanel";
 
 interface FindingRow {
   id: number;
@@ -25,7 +27,7 @@ export default async function PushPage({ params }: { params: Promise<{ id: strin
   const supabase = await createUserClient();
   const { data: push } = await supabase
     .from("push_events")
-    .select("id, project_id, branch, head_sha, author, mode, score, decision, blocked_by, forced, bug_risk, conflict_risk, created_at, projects(name)")
+    .select("id, project_id, branch, head_sha, author, mode, score, decision, blocked_by, forced, bug_risk, conflict_risk, created_at, ai_explanation, ai_model, projects(name)")
     .eq("id", id)
     .maybeSingle();
   if (!push) notFound();
@@ -54,6 +56,10 @@ export default async function PushPage({ params }: { params: Promise<{ id: strin
           </p>
         )}
       </div>
+
+      <Card title="✨ AI explanation">
+        <ExplainPanel pushId={push.id} explanation={push.ai_explanation} model={push.ai_model} configured={aiConfigured()} />
+      </Card>
 
       {SECTIONS.map((s) => {
         const list = findings.filter((f) => f.kind === s.kind);

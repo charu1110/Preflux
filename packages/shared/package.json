@@ -10,6 +10,7 @@
     ".": "./src/index.ts",
     "./secrets": "./src/secrets/index.ts",
     "./ml": "./src/ml/index.ts",
-    "./ingest": "./src/ingest.ts"
+    "./ingest": "./src/ingest.ts",
+    "./explain": "./src/explain.ts"
   }
 }

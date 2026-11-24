@@ -137,6 +137,8 @@ Open http://localhost:3000 and click **Try the scanner → Load example**.
 3. `npm run dev:web`, open http://localhost:3000/dashboard, and create an account with your own email.
 4. Charu adds you to the project (project page → **Team**).
 
+**AI explanations:** open any push and click **✨ Explain with AI**. This works on the dashboard server that has the Claude key: the deployed dashboard (once it's on Vercel), or Charu's laptop during a demo. The key lives only on that server. On your own laptop's copy you'll see "AI explanations are not set up", and that's expected: **don't ask for the key, and never put it in a chat or a file you commit.**
+
 ---
 
 ## 7. Test as a team (the Collision Radar)
